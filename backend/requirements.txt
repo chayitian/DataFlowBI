@@ -3,6 +3,7 @@ uvicorn
 sqlalchemy
 pymysql
 pandas
+numpy
 python-multipart
 openpyxl
 pydantic

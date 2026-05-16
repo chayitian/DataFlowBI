@@ -7,6 +7,8 @@ from pathlib import Path
 import pandas as pd
 from fastapi import HTTPException, UploadFile
 
+from app.services.report_builder import build_report
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 UPLOADS_DIR = BASE_DIR / "uploads"
 ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
@@ -32,11 +34,13 @@ def build_preview(file: UploadFile) -> dict:
         ) from exc
 
     fields = [str(col) for col in dataframe.columns.tolist()]
+    report = build_report(dataframe)
     return {
         "filename": Path(file.filename).name,
         "rows": int(dataframe.shape[0]),
         "columns": int(dataframe.shape[1]),
         "fields": fields,
+        "report": report,
     }
 
 
