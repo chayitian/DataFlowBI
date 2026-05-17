@@ -363,7 +363,7 @@ def _build_timeseries(dataframe: pd.DataFrame) -> dict:
         datetime_cols = []
         for col in dataframe.columns[:TIMESERIES_DETECT_FIELDS]:
             try:
-                converted = pd.to_datetime(dataframe[col], infer_datetime_format=True)
+                converted = pd.to_datetime(dataframe[col], format="mixed")
                 if converted.notna().sum() > len(dataframe) * 0.5:
                     datetime_cols = [col]
                     dataframe[col] = converted
@@ -373,7 +373,7 @@ def _build_timeseries(dataframe: pd.DataFrame) -> dict:
 
     result = {}
     for col in datetime_cols[:3]:
-        series = pd.to_datetime(dataframe[col], errors="coerce").dropna()
+        series = pd.to_datetime(dataframe[col], format="mixed", errors="coerce").dropna()
         if series.empty:
             continue
 
@@ -381,6 +381,7 @@ def _build_timeseries(dataframe: pd.DataFrame) -> dict:
         temp = pd.DataFrame({"date": series})
         daily = temp.set_index("date").resample("D").size()
         monthly = temp.set_index("date").resample("ME").size()
+        yearly = temp.set_index("date").resample("YE").size()
 
         if len(daily) > 1:
             result[str(col)] = {
@@ -391,6 +392,10 @@ def _build_timeseries(dataframe: pd.DataFrame) -> dict:
                 "monthly": {
                     "dates": [str(d.date()) for d in monthly.index.tolist()],
                     "values": [int(v) for v in monthly.tolist()],
+                },
+                "yearly": {
+                    "dates": [str(d.date()) for d in yearly.index.tolist()],
+                    "values": [int(v) for v in yearly.tolist()],
                 },
             }
 

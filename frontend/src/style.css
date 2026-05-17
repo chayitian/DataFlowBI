@@ -342,6 +342,21 @@ body::after {
   gap: 16px;
 }
 
+.chart-init-bar {
+  margin-top: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .report-section {
   margin-top: 48px;
   display: grid;
@@ -857,29 +872,15 @@ body::after {
   color: var(--accent-2);
 }
 
-.filter-panel {
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 16px;
-  max-height: 320px;
-  overflow: auto;
-}
-
-.filter-header {
+.filter-fields {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
 }
 
-.filter-title {
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--ink);
-}
-
-.filter-body {
+.filter-ranges {
   display: grid;
   gap: 12px;
 }
