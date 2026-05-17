@@ -1,6 +1,7 @@
 import { ref, computed } from "vue";
 import { uploadDataset, filterData as filterApi } from "../api/upload";
 
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const selectedFile = ref(null);
 const preview = ref(null);
 const isUploading = ref(false);
@@ -69,6 +70,12 @@ export function useFileUpload() {
 
   const runUpload = async (onError) => {
     if (!selectedFile.value) return;
+    if (selectedFile.value.size > MAX_FILE_SIZE) {
+      const maxMb = MAX_FILE_SIZE / (1024 * 1024);
+      errorMessage.value = `File too large. Maximum size is ${maxMb}MB.`;
+      if (onError) onError(errorMessage.value);
+      return;
+    }
     isUploading.value = true;
     errorMessage.value = "";
     try {
@@ -91,6 +98,7 @@ export function useFileUpload() {
     if (!info) return;
     selectedFields.value = preview.value?.fields || null;
     filterNumericRanges.value = {};
+    filterCategoricalValues.value = {};
   };
 
   const applyFilter = async () => {

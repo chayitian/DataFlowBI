@@ -268,7 +268,7 @@ def _build_binning(dataframe: pd.DataFrame) -> dict:
         ef_edges.append(float(sorted_vals[-1]))
         ef_edges = sorted(set(ef_edges))
         if len(ef_edges) < 2:
-            ef_counts, ef_edges = [], []
+            ef_counts, ef_edges = np.array([]), np.array([])
         else:
             ef_counts, ef_edges = np.histogram(sorted_vals, bins=ef_edges)
 
@@ -358,6 +358,7 @@ def _build_missing_heatmap(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_timeseries(dataframe: pd.DataFrame) -> dict:
+    dataframe = dataframe.copy()
     datetime_cols = dataframe.select_dtypes(include=["datetime64"]).columns
     if not len(datetime_cols):
         datetime_cols = []

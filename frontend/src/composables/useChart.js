@@ -18,10 +18,10 @@ const getECharts = () => {
   return echartsPromise;
 };
 
+let isRendering = false;
 const chartCategory = ref(null);
 const chartType = ref("bar");
 const chartFeature = ref(null);
-const showChartOptions = ref(false);
 const chartEl = ref(null);
 const chartInstance = ref(null);
 const histogramBinCount = ref(10);
@@ -111,16 +111,22 @@ export function useChart(opts = {}) {
   });
 
   const renderChart = async () => {
-    if (!chartEl.value) return;
-    if (!chartOption.value) {
-      if (chartInstance.value) chartInstance.value.clear();
-      return;
+    if (isRendering) return;
+    isRendering = true;
+    try {
+      if (!chartEl.value) return;
+      if (!chartOption.value) {
+        if (chartInstance.value) chartInstance.value.clear();
+        return;
+      }
+      if (!chartInstance.value) {
+        const echarts = await getECharts();
+        chartInstance.value = echarts.init(chartEl.value);
+      }
+      chartInstance.value.setOption(chartOption.value, true);
+    } finally {
+      isRendering = false;
     }
-    if (!chartInstance.value) {
-      const echarts = await getECharts();
-      chartInstance.value = echarts.init(chartEl.value);
-    }
-    chartInstance.value.setOption(chartOption.value, true);
   };
 
   const resizeChart = () => { if (chartInstance.value) chartInstance.value.resize(); };
@@ -173,7 +179,6 @@ export function useChart(opts = {}) {
   const selectAnalysis = (key) => { chartCategory.value = key; syncChartSelection(); };
   const selectChartType = (type) => { chartType.value = type; };
   const selectFeature = (feature) => { chartFeature.value = feature; };
-  const toggleChartOptions = () => { if (opts.hasCharts?.value) showChartOptions.value = !showChartOptions.value; };
   const toggleComparisonField = (field) => {
     const idx = selectedComparisonFields.value.indexOf(field);
     if (idx >= 0) selectedComparisonFields.value.splice(idx, 1);
@@ -201,7 +206,6 @@ export function useChart(opts = {}) {
   const resetChart = () => {
     chartCategory.value = null;
     chartFeature.value = null;
-    showChartOptions.value = false;
     rebinData.value = null;
     histogramBinCount.value = 10;
     histogramNormalize.value = false;
@@ -215,14 +219,14 @@ export function useChart(opts = {}) {
   };
 
   return {
-    chartCategory, chartType, chartFeature, showChartOptions, chartEl, chartInstance,
+    chartCategory, chartType, chartFeature, chartEl, chartInstance,
     histogramBinCount, histogramNormalize, rebinData, groupAggregation, binningMethod,
     scatterXField, scatterYField, timeseriesPeriod, comparisonMode, selectedComparisonFields,
     histogramFeatures, frequencyFields, paretoFields, boxplotFields, groupCategoricalFields,
     binningFields, violinFields, scatterFields, timeseriesFields, outlierFields,
     chartOption, hasChartData, currentChartTitle,
     renderChart, resizeChart, syncChartSelection, selectAnalysis, selectChartType,
-    selectFeature, toggleChartOptions, toggleComparisonField, rebin, downloadChart,
+    selectFeature, toggleComparisonField, rebin, downloadChart,
     resetChart, buildChartOption,
   };
 }

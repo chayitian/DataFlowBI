@@ -175,6 +175,8 @@ const {
   onFileChange, runUpload, applyFilter, resetFilter, toggleFields,
 } = useFileUpload();
 
+let _syncChartSelection = null;
+
 const {
   selection, appliedSelection, chartConfigApplied, showChartSetup,
   tempChartTypes, appliedChartTypes, showSelection,
@@ -194,6 +196,8 @@ const {
   renderChart, resizeChart, syncChartSelection, selectAnalysis, selectChartType,
   selectFeature, toggleComparisonField, rebin, downloadChart, resetChart,
 } = useChart({ activeReport, savedName, analysisOptions });
+
+_syncChartSelection = syncChartSelection;
 
 const showChartOptions = ref(true);
 
@@ -220,7 +224,7 @@ const confirmSelection = async () => {
   await runUpload();
   if (normalized.charts_enabled && !chartConfigApplied.value) {
     chartConfigApplied.value = true;
-    syncChartSelection();
+    _syncChartSelection();
   }
 };
 
@@ -229,7 +233,7 @@ const confirmChartSetup = () => {
   chartConfigApplied.value = true;
   showChartSetup.value = false;
   showChartOptions.value = false;
-  syncChartSelection();
+  _syncChartSelection();
 };
 
 watch(activeReport, () => {

@@ -5,57 +5,89 @@
 ## 技术栈
 
 - **后端**: Python 3.11, FastAPI, Pandas, NumPy, SQLAlchemy, MySQL, Uvicorn
-- **前端**: Vue 3 (Composition API), Vite 5, ECharts 5, Axios
-- **工程化**: Git, RESTful API, 前后端分离
+- **前端**: Vue 3 (Composition API + `<script setup>`), Vite 5, ECharts 5 (懒加载), Axios
+- **架构**: 组件化前端（9 个组件 + 5 个 composable），模块化后端服务层
 
 ## 项目结构
 
 ```text
 DATAFLOWBI/
-├── backend/                     # Python FastAPI 后端
+├── backend/                          # Python FastAPI 后端
 │   ├── app/
-│   │   ├── api/                 # API 路由
-│   │   │   ├── health.py        # GET /health
-│   │   │   ├── upload.py        # POST /upload
-│   │   │   ├── rebin.py         # POST /rebin
-│   │   │   └── filter.py        # POST /filter
+│   │   ├── api/                      # API 路由
+│   │   │   ├── health.py             # GET /health
+│   │   │   ├── upload.py             # POST /upload
+│   │   │   ├── rebin.py              # POST /rebin
+│   │   │   └── filter.py             # POST /filter
 │   │   ├── services/
-│   │   │   ├── file_preview.py  # 文件解析、缓存、过滤、重分箱
-│   │   │   └── report_builder.py# 16 项统计分析报告生成
-│   │   ├── models/              # SQLAlchemy 模型（预留）
-│   │   ├── schemas/             # Pydantic 模型（预留）
-│   │   ├── database/            # MySQL 连接配置
-│   │   ├── utils/               # 工具函数（预留）
-│   │   └── main.py              # 应用入口
-│   ├── uploads/                 # 上传文件存储
-│   ├── reports/                 # 报告导出目录（预留）
+│   │   │   ├── file_preview.py       # 文件解析、缓存、过滤、重分箱
+│   │   │   └── report_builder.py     # 16 项统计分析报告生成（含日/月/年时序）
+│   │   ├── models/                   # SQLAlchemy 模型（预留）
+│   │   ├── schemas/                  # Pydantic 模型（预留）
+│   │   ├── database/                 # MySQL 连接配置
+│   │   ├── utils/                    # 工具函数（预留）
+│   │   └── main.py                   # 应用入口
+│   ├── uploads/                      # 上传文件存储
+│   ├── reports/                      # 报告导出目录（预留）
 │   └── requirements.txt
-├── frontend/                    # Vue 3 前端
+├── frontend/                         # Vue 3 前端
 │   ├── src/
-│   │   ├── api/                 # Axios API 客户端
-│   │   ├── App.vue              # 主组件（模板/逻辑/i18n/图表）
-│   │   ├── style.css            # 全局样式
-│   │   └── main.js              # 入口
+│   │   ├── api/                      # Axios API 客户端
+│   │   │   ├── client.js             # Axios 实例
+│   │   │   └── upload.js             # 3 个 API 函数
+│   │   ├── composables/              # 状态逻辑层（5 个）
+│   │   │   ├── useI18n.js            # 中英双语 i18n
+│   │   │   ├── useFileUpload.js      # 上传·预览·筛选生命周期
+│   │   │   ├── useSelection.js       # 页面模块控制 + 图表类型配置
+│   │   │   ├── useChart.js           # 图表状态·渲染·交互
+│   │   │   └── chartBuilders.js      # 18 个纯函数 ECharts option 构造器
+│   │   ├── components/               # UI 组件（8 个）
+│   │   │   ├── SettingsMenu.vue      # 设置菜单（语言/弹窗样式）
+│   │   │   ├── SelectionDialog.vue   # 分析选项对话框
+│   │   │   ├── ChartSetupDialog.vue  # 图表类型配置对话框
+│   │   │   ├── FilterPanel.vue       # 数据筛选对话框（字段勾选 + 数值范围）
+│   │   │   ├── PreviewCard.vue       # 上传摘要卡片
+│   │   │   ├── ReportSection.vue     # 统计报告 + 样本数据
+│   │   │   ├── ChartToolbar.vue      # 图表工具栏
+│   │   │   └── ChartOptionsPanel.vue # 图表参数面板（35 个 props）
+│   │   ├── App.vue                   # 主布局 + 组合所有组件与 composable
+│   │   ├── style.css                 # 全局样式（973 行）
+│   │   └── main.js                   # 入口
 │   ├── index.html
 │   └── package.json
-├── tests/                       # 测试（预留）
-├── docs/                        # 文档（预留）
-├── docker/                      # Docker 配置（预留）
+├── tests/                            # 测试（预留）
+├── docs/                             # 文档（预留）
+├── docker/                           # Docker 配置（预留）
 └── README.md
 ```
 
-## 已实现功能
+## 架构分层
 
-### 后端 API（4 个端点）
+```
+App.vue（主布局 + watch 联动）
+  ├── composables/         ← 共享状态（模块级 singleton ref）
+  │   ├── useI18n          ← 语言包
+  │   ├── useFileUpload    ← 上传、预览、筛选数据流
+  │   ├── useSelection     ← 页面模块开关、图表类型
+  │   └── useChart         ← 图表状态 + ECharts 懒加载
+  │       └── chartBuilders ← 18 个纯函数构造器
+  └── components/          ← UI 展示层
+       ├── Header 区域     ← SettingsMenu + PreviewCard
+       ├── Report 区域     ← ReportSection
+       ├── Chart 区域      ← ChartToolbar + FilterPanel + ChartOptionsPanel
+       └── Dialog 区域     ← SelectionDialog + ChartSetupDialog + FilterPanel
+```
+
+## 后端 API（4 个端点）
 
 | 方法 | 路由 | 用途 |
 |------|------|------|
 | GET | `/health` | 健康检查 |
 | POST | `/upload` | 上传 CSV/XLSX → 解析 → 预览 + 16 项分析报告 |
 | POST | `/rebin` | 直方图动态重分箱（自定义箱数/标准化） |
-| POST | `/filter` | 数据筛选（数值范围 + 字段选择） |
+| POST | `/filter` | 数据筛选（字段选择 + 数值范围 + 分类值过滤） |
 
-### 统计分析报告（16 项）
+## 统计分析报告（16 项）
 
 - 缺失统计（缺失值计数 + 缺失率）
 - 数值摘要（count, mean, std, min, max）
@@ -70,25 +102,59 @@ DATAFLOWBI/
 - 小提琴密度图（KDE 平滑，30 箱）
 - 散点矩阵（最多 6 字段，采样 500 行）
 - 缺失热力图（布尔矩阵，采样 200 行）
-- 时间序列（自动检测日期字段，日/月聚合）
+- 时间序列（自动检测日期字段，日/月/年聚合）
 - 异常值检测（IQR + Z-Score 双方法）
 - 字段类型分布
 
-### 前端功能
+## 前端功能
 
-- **文件上传**: 支持 .csv / .xlsx，拖拽或点击选择文件
-- **两级选择流程**: 先选择基础模块（预览/报告/样例/图表），再配置具体图表指标
-- **预览摘要**: 文件名、行数、列数、字段列表（展开/折叠）
-- **分析报告**: 字段级统计表格（类型、缺失、均值、标准差、最值）
-- **17 种图表类型**: 柱状图、折线图、直方图+分布图、帕累托图、箱线图、相关性热力图、分组柱状图、分箱图、密度图、散点图、缺失热力图、时间序列、异常值对比图、数值指标（均值/最大/最小）、频率分布
-- **图表交互**: 左侧选择分析类别，右侧选择图形类型，支持字段切换
-- **直方图控制**: 动态调整箱数、标准化切换（触发后端重分箱）
+### 应用生命周期
+
+```
+选择文件 → 配置模块 → 上传解析 → 配置图表 → 数据筛选 → 可视化分析
+```
+
+### 核心功能
+
+- **文件上传**: 支持 .csv / .xlsx
+- **分析选项对话框**: 选择展示模块（预览摘要/分析报告/样例数据/图表分析），支持 dialog / drawer 两种样式
+- **预览摘要卡片**: 文件名、行数、列数、字段列表（展开/折叠）
+- **统计报告表格**: 字段级统计（类型、缺失数、缺失率、均值、标准差、最值）
+- **17 种图表分析类别**:
+
+| 类别 | 图表类型 | 说明 |
+|------|----------|------|
+| 缺失率 | 柱/线 | 各字段缺失率百分比 |
+| 缺失热力图 | 热力图 | 缺失值矩阵 |
+| 字段类型分布 | 柱/线 | 各数据类型字段数量 |
+| 特征分布 | 直方图+分布曲线 | 数值字段分布，支持动态分箱 |
+| 频次分布 | 柱/线 | 分类字段 Top N |
+| 帕累托分析 | 帕累托图 | Top 20 + 累计曲线 |
+| 箱线图 | 箱线图 | 五数概括 |
+| 相关性热力图 | 热力图 | 皮尔逊相关系数矩阵 |
+| 分组统计 | 柱/线 | 分类 × 数值交叉聚合（均值/最大/最小） |
+| 分箱统计 | 柱/线 | 等宽/等频分箱 |
+| 小提琴图 | 密度图 | KDE 密度分布 |
+| 散点图 | 散点图 | X/Y 轴字段选择 |
+| 时间序列 | 折线 | 日/月/年聚合周期 |
+| 异常值检测 | 柱/线 | IQR / Z-Score 双方法 |
+| 数值均值/最大/最小 | 柱/线 | 数值字段汇总指标 |
+
+- **数据筛选（弹窗）**: 字段勾选（include_fields）+ 数值范围双滑块，应用后实时更新报告与图表
+- **全选/取消**: 字段列表支持一键全选或全取消
 - **对比模式**: 多字段直方图叠加对比
-- **数据筛选面板**: 数值范围滑块筛选，应用后实时更新报告
-- **图表下载**: PNG / SVG
-- **中英文切换**: 143 个 i18n key
+- **图表工具栏**: 展开/收起选项、数据筛选、对比模式、下载 PNG/SVG、图表指标配置
+- **图表下载**: PNG / SVG 格式
+- **中英文切换**: 145+ 个 i18n key
 - **弹窗样式切换**: 对话框（居中模态）/ 抽屉（右侧滑入）
 - **响应式布局**: 适配 720px 以下设备
+
+### 性能优化
+
+- ECharts 动态导入（懒加载 1MB+ 按需加载）
+- 主应用包 172 KB（gzip 59 KB）
+- `App.vue` 从 1640 行精简至 279 行（-95%）
+- 图表渲染通过 composable 响应式 watch 联动
 
 ## 启动方式
 
@@ -125,13 +191,14 @@ npm run dev
 
 1. 先后启动后端和前端服务
 2. 浏览器访问 `http://localhost:5173/`
-3. 点击上传按钮选择 CSV/XLSX 文件
-4. 弹出选择窗口：勾选需要展示的模块（预览/报告/样例/图表）
-5. 确认后自动上传并解析；若启用图表，弹出二级指标配置窗口
-6. 在"统计分析与可视化"内点击"展开可视化选项"，选择分析类别与图形类型
-7. 如需筛选数据，点击工具栏"数据筛选"按钮，调整数值范围后应用
-8. 切换语言或弹窗样式：右上角"设置"
-9. 下载图表：工具栏 PNG/SVG 按钮
+3. 点击「选择文件」选择 CSV/XLSX 文件 → 点击「开始解析」
+4. 弹出选择窗口：勾选需要展示的模块（预览摘要/分析报告/样例数据/启用图表）
+5. 确认后自动上传并解析；解析完成即进入图表区
+6. 如需调整图表类型，点击「统计分析指标设置」按钮勾选启用的分析类别
+7. 点击「展开可视化选项」→ 左侧选分析类别，右侧选图形类型与字段
+8. 如需筛选数据，点击工具栏「数据筛选」打开筛选弹窗 → 勾选字段/调整滑块 → 应用
+9. 切换语言或弹窗样式：右上角「设置」
+10. 下载图表：工具栏 PNG/SVG 按钮
 
 ## API 示例
 

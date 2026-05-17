@@ -268,7 +268,7 @@ export const buildComparisonHistogramOption = (report, fields) => {
   const series = [];
   for (let i = 0; i < fields.length; i++) {
     const h = report?.histograms?.[fields[i]];
-    if (!h || !h.bins?.length) continue;
+    if (!h || !h.bins?.length || !h.counts?.length) continue;
     series.push({
       name: fields[i], type: "bar", data: h.counts, barMaxWidth: Math.max(8, 24 - fields.length * 2),
       itemStyle: { color: colors[i % colors.length], opacity: 0.75 },

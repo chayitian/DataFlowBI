@@ -8,3 +8,5 @@ python-multipart
 openpyxl
 pydantic
 python-dotenv
+pytest>=8.0
+httpx>=0.27
