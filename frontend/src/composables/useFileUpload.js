@@ -1,5 +1,5 @@
 import { ref, computed } from "vue";
-import { uploadDataset, filterData as filterApi } from "../api/upload";
+import { uploadDataset, filterData as filterApi, reloadHistory } from "../api/upload";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const selectedFile = ref(null);
@@ -117,6 +117,29 @@ export function useFileUpload() {
     }
   };
 
+  const loadHistoryRecord = async (recordId) => {
+    isUploading.value = true;
+    errorMessage.value = "";
+    try {
+      const data = await reloadHistory(recordId);
+      preview.value = data;
+      savedName.value = data?.saved_name || "";
+      showAllFields.value = false;
+      hasParsed.value = true;
+      filteredData.value = null;
+      filterNumericRanges.value = {};
+      filterCategoricalValues.value = {};
+      initFilterInfo();
+      return data;
+    } catch (error) {
+      const msg = error?.response?.data?.detail || "Failed to load history record";
+      errorMessage.value = msg;
+      throw error;
+    } finally {
+      isUploading.value = false;
+    }
+  };
+
   const resetFilter = () => {
     filterNumericRanges.value = {};
     filterCategoricalValues.value = {};
@@ -130,6 +153,6 @@ export function useFileUpload() {
     filteredData, filterNumericRanges, filterCategoricalValues, showFilterPanel, hasParsed, selectedFields,
     reportData, numericSummary, sampleRows, totalFields, visibleFields, hasMoreFields,
     sampleColumns, reportStatsRows, activeReport,
-    onFileChange, runUpload, initFilterInfo, applyFilter, resetFilter, toggleFields,
+    onFileChange, runUpload, initFilterInfo, applyFilter, resetFilter, toggleFields, loadHistoryRecord,
   };
 }

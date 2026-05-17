@@ -8,6 +8,9 @@
       @update:locale="setLanguage($event); showSettingsMenu = false"
       @update:selectionMode="selectionMode = $event; showSettingsMenu = false"
     />
+    <button class="history-btn" title="History" @click="showHistory = true">
+      &#128196;
+    </button>
     <header class="hero">
       <div class="hero-text">
         <p class="eyebrow">{{ t("eyebrow") }}</p>
@@ -68,6 +71,8 @@
           @toggleComparison="comparisonMode = !comparisonMode; selectedComparisonFields = []"
           @download="downloadChart"
           @setup="openChartSetup"
+          @exportDocx="handleExportDocx"
+          @exportExcel="handleExportExcel"
         />
         <ChartOptionsPanel
           :show="showChartOptions && hasCharts"
@@ -145,6 +150,11 @@
       @reset="resetFilter"
       @close="showFilterPanel = false"
     />
+    <HistoryPanel
+      :show="showHistory"
+      @close="showHistory = false"
+      @select="onHistorySelect"
+    />
   </div>
 </template>
 
@@ -154,6 +164,7 @@ import { useI18n } from "./composables/useI18n";
 import { useFileUpload } from "./composables/useFileUpload";
 import { useSelection } from "./composables/useSelection";
 import { useChart } from "./composables/useChart";
+import { exportReportDocx, exportReportExcel } from "./api/upload";
 import SettingsMenu from "./components/SettingsMenu.vue";
 import PreviewCard from "./components/PreviewCard.vue";
 import ReportSection from "./components/ReportSection.vue";
@@ -162,9 +173,11 @@ import ChartSetupDialog from "./components/ChartSetupDialog.vue";
 import FilterPanel from "./components/FilterPanel.vue";
 import ChartToolbar from "./components/ChartToolbar.vue";
 import ChartOptionsPanel from "./components/ChartOptionsPanel.vue";
+import HistoryPanel from "./components/HistoryPanel.vue";
 
 const { locale, t, setLanguage } = useI18n();
 const showSettingsMenu = ref(false);
+const showHistory = ref(false);
 const selectionMode = ref("dialog");
 
 const {
@@ -172,7 +185,7 @@ const {
   filteredData, filterNumericRanges, showFilterPanel, hasParsed, selectedFields,
   reportData, sampleRows, totalFields, visibleFields, hasMoreFields,
   sampleColumns, reportStatsRows, activeReport,
-  onFileChange, runUpload, applyFilter, resetFilter, toggleFields,
+  onFileChange, runUpload, applyFilter, resetFilter, toggleFields, loadHistoryRecord,
 } = useFileUpload();
 
 let _syncChartSelection = null;
@@ -204,6 +217,60 @@ const showChartOptions = ref(true);
 const hasCharts = computed(
   () => showChartSection.value && analysisOptions.value.length > 0
 );
+
+const onHistorySelect = async (record) => {
+  showHistory.value = false;
+  try {
+    await loadHistoryRecord(record.id);
+    showSelection.value = false;
+    appliedSelection.value = {
+      preview: true,
+      report: true,
+      sample: true,
+      charts_enabled: true,
+    };
+    hasParsed.value = true;
+    if (!chartConfigApplied.value) {
+      chartConfigApplied.value = true;
+      _syncChartSelection();
+    }
+  } catch {
+    // error already set by loadHistoryRecord
+  }
+};
+
+const downloadBlob = (blob, filename) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+const handleExportDocx = async () => {
+  if (!savedName.value) return;
+  try {
+    const blob = await exportReportDocx(savedName.value, preview.value?.filename || "report");
+    downloadBlob(blob, `${preview.value?.filename || "report"}.docx`);
+  } catch (e) {
+    console.error("Word export failed:", e);
+    errorMessage.value = e?.response?.data?.detail || "Word export failed";
+  }
+};
+
+const handleExportExcel = async () => {
+  if (!savedName.value) return;
+  try {
+    const blob = await exportReportExcel(savedName.value, preview.value?.filename || "report");
+    downloadBlob(blob, `${preview.value?.filename || "report"}.xlsx`);
+  } catch (e) {
+    console.error("Excel export failed:", e);
+    errorMessage.value = e?.response?.data?.detail || "Excel export failed";
+  }
+};
 
 const toggleChartOptions = () => {
   if (!hasCharts.value) return;

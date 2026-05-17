@@ -53,6 +53,20 @@
       <button
         class="chart-download-btn"
         type="button"
+        @click="$emit('exportDocx')"
+      >
+        {{ t("exportWord") }}
+      </button>
+      <button
+        class="chart-download-btn"
+        type="button"
+        @click="$emit('exportExcel')"
+      >
+        {{ t("exportExcel") }}
+      </button>
+      <button
+        class="chart-download-btn"
+        type="button"
         @click="$emit('setup')"
       >
         {{ t("chartSetupTitle") }}
@@ -72,7 +86,7 @@ defineProps({
   comparisonMode: Boolean,
 });
 
-defineEmits(["toggleOptions", "toggleFilter", "toggleComparison", "download", "setup"]);
+defineEmits(["toggleOptions", "toggleFilter", "toggleComparison", "download", "setup", "exportDocx", "exportExcel"]);
 
 const { t } = useI18n();
 </script>

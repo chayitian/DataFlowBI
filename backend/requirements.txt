@@ -10,3 +10,6 @@ pydantic
 python-dotenv
 pytest>=8.0
 httpx>=0.27
+python-docx
+xlsxwriter
+cryptography

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import shutil
 import uuid
 from pathlib import Path
@@ -9,6 +10,8 @@ import numpy as np
 import pandas as pd
 from fastapi import HTTPException, UploadFile
 
+from app.database.db import SessionLocal
+from app.models import UploadRecord
 from app.services.report_builder import build_report
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -43,6 +46,30 @@ def build_preview(file: UploadFile) -> dict:
     fields = [str(col) for col in dataframe.columns.tolist()]
     report = build_report(dataframe)
     filter_info = build_filter_info(dataframe)
+
+    record_id = None
+    file_hash = _compute_file_hash(saved_path)
+    db = SessionLocal()
+    try:
+        record = UploadRecord(
+            filename=saved_name,
+            original_filename=Path(file.filename).name,
+            file_size=saved_path.stat().st_size,
+            file_hash=file_hash,
+            row_count=int(dataframe.shape[0]),
+            column_count=int(dataframe.shape[1]),
+            columns_json=fields,
+            dtypes_json={str(col): str(dtype) for col, dtype in dataframe.dtypes.items()},
+            cached_path=str(saved_path),
+        )
+        db.add(record)
+        db.commit()
+        record_id = record.id
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
     return {
         "saved_name": saved_name,
         "filename": Path(file.filename).name,
@@ -51,6 +78,7 @@ def build_preview(file: UploadFile) -> dict:
         "fields": fields,
         "report": report,
         "filter_info": filter_info,
+        "record_id": record_id,
     }
 
 
@@ -154,6 +182,14 @@ def _normalize_value(value: Any) -> Any:
     return value
 
 
+def _compute_file_hash(filepath: Path) -> str:
+    sha256 = hashlib.sha256()
+    with filepath.open("rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            sha256.update(chunk)
+    return sha256.hexdigest()
+
+
 def _save_upload(file: UploadFile, suffix: str) -> Path:
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = Path(file.filename or "upload").name
@@ -165,6 +201,34 @@ def _save_upload(file: UploadFile, suffix: str) -> Path:
 
     file.file.close()
     return destination
+
+
+def reload_from_cache(cached_path: str, original_filename: str) -> dict:
+    file_path = Path(cached_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Cached file not found on disk.")
+
+    suffix = file_path.suffix.lower()
+    try:
+        dataframe = _load_dataframe(file_path, suffix)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to parse cached file: {exc}") from exc
+
+    saved_name = file_path.name
+    DATA_CACHE[saved_name] = dataframe
+
+    fields = [str(col) for col in dataframe.columns.tolist()]
+    report = build_report(dataframe)
+    filter_info = build_filter_info(dataframe)
+    return {
+        "saved_name": saved_name,
+        "filename": original_filename,
+        "rows": int(dataframe.shape[0]),
+        "columns": int(dataframe.shape[1]),
+        "fields": fields,
+        "report": report,
+        "filter_info": filter_info,
+    }
 
 
 def _load_dataframe(file_path: Path, suffix: str) -> pd.DataFrame:

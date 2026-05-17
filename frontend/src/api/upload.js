@@ -34,3 +34,34 @@ export async function filterData(savedName, includeFields, numericRanges, catego
   });
   return response.data;
 }
+
+export async function getHistory(limit = 20, offset = 0) {
+  const response = await apiClient.get("/history", { params: { limit, offset } });
+  return response.data;
+}
+
+export async function getHistoryDetail(recordId) {
+  const response = await apiClient.get(`/history/${recordId}`);
+  return response.data;
+}
+
+export async function reloadHistory(recordId) {
+  const response = await apiClient.post(`/history/${recordId}/reload`);
+  return response.data;
+}
+
+export async function exportReportDocx(savedName, filename = "report") {
+  const response = await apiClient.get("/export/docx", {
+    params: { saved_name: savedName, filename },
+    responseType: "blob",
+  });
+  return response.data;
+}
+
+export async function exportReportExcel(savedName, filename = "report") {
+  const response = await apiClient.get("/export/excel", {
+    params: { saved_name: savedName, filename },
+    responseType: "blob",
+  });
+  return response.data;
+}
