@@ -78,14 +78,28 @@ App.vue（主布局 + watch 联动）
        └── Dialog 区域     ← SelectionDialog + ChartSetupDialog + FilterPanel
 ```
 
-## 后端 API（4 个端点）
+## 后端 API（主要端点）
 
 | 方法 | 路由 | 用途 |
 |------|------|------|
 | GET | `/health` | 健康检查 |
-| POST | `/upload` | 上传 CSV/XLSX → 解析 → 预览 + 16 项分析报告 |
+| POST | `/upload` | 上传 CSV/XLSX → 解析 → 预览 + 报告 + 过滤信息 |
+| POST | `/clean` | 数据清洗（缺失/异常/类型转换）并生成新版本 |
+| GET | `/clean/templates` | 清洗模板配置 |
 | POST | `/rebin` | 直方图动态重分箱（自定义箱数/标准化） |
 | POST | `/filter` | 数据筛选（字段选择 + 数值范围 + 分类值过滤） |
+| GET | `/history` | 版本记录列表 |
+| GET | `/history/{id}` | 版本详情 |
+| POST | `/history/{id}/reload` | 加载指定版本 |
+| GET | `/history/{id}/versions` | 同一数据集版本列表 |
+| GET | `/history/compare` | 版本对比（from_id/to_id） |
+| POST | `/history/{id}/import` | 导入版本到 MySQL |
+| GET | `/export/docx` | 导出 Word（无图表） |
+| POST | `/export/docx` | 导出 Word（含图表） |
+| GET | `/export/excel` | 导出 Excel |
+| GET | `/export/pdf` | 导出 PDF（无图表） |
+| POST | `/export/pdf` | 导出 PDF（含图表） |
+| POST | `/export/pptx` | 导出 PPTX（含图表） |
 
 ## 统计分析报告（16 项）
 
@@ -145,6 +159,9 @@ App.vue（主布局 + watch 联动）
 - **对比模式**: 多字段直方图叠加对比
 - **图表工具栏**: 展开/收起选项、数据筛选、对比模式、下载 PNG/SVG、图表指标配置
 - **图表下载**: PNG / SVG 格式
+- **清洗增强**: 模板化清洗、类型建议、字段质量评分、清洗前后对比、清洗日志导出
+- **版本历史**: 版本列表、加载指定版本、版本对比
+- **报告导出**: Word/PDF/PPTX 支持图表嵌入，Excel 增强格式
 - **中英文切换**: 145+ 个 i18n key
 - **弹窗样式切换**: 对话框（居中模态）/ 抽屉（右侧滑入）
 - **响应式布局**: 适配 720px 以下设备
@@ -175,6 +192,15 @@ python -m venv .venv
 # source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
+```
+
+可选：自动入库开启（混合持久化）
+
+```bash
+# 自动入库（MySQL 可用时）
+set AUTO_IMPORT_DB=1
+# 入库表冲突策略：replace 或 append
+set IMPORT_IF_EXISTS=replace
 ```
 
 ### 前端
@@ -210,11 +236,51 @@ curl http://localhost:8000/health
 curl -F "file=@./sample.csv" http://localhost:8000/upload
 ```
 
+## 测试
+
+### 后端单元测试
+
+```bash
+cd backend
+pytest
+```
+
+### 前端单元测试
+
+```bash
+cd frontend
+npm run test
+```
+
+### E2E（Playwright / Cypress）
+
+确保前后端已启动后执行：
+
+```bash
+cd frontend
+npm run test:e2e:playwright
+npm run test:e2e:cypress
+```
+
+### 性能测试（可选）
+
+```bash
+cd backend
+set PERF_TESTS=1
+pytest -m performance
+```
+
+## 文档
+
+- [docs/overview.md](docs/overview.md)
+- [docs/api.md](docs/api.md)
+- [docs/export.md](docs/export.md)
+- [docs/testing.md](docs/testing.md)
+
 ## 后续规划
 
-- 数据清洗规则与字段类型推断
-- MySQL 自动建表与批量入库
-- 报告导出（PDF/Excel/PPT）
-- 单元测试与集成测试
-- Docker 容器化部署
 - 权限与多租户
+- 审计与操作日志
+- 模块化报表模板与主题
+- 任务调度与定时报告
+- 更细粒度的数据血缘与版本对比

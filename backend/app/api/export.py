@@ -1,11 +1,30 @@
 from urllib.parse import quote
 
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
-from app.services.export_service import export_report_docx, export_report_excel
+from app.services.export_service import (
+    export_report_docx,
+    export_report_excel,
+    export_report_pdf,
+    export_report_pptx,
+)
 
 router = APIRouter(prefix="/export", tags=["export"])
+
+
+class ExportChart(BaseModel):
+    title: Optional[str] = None
+    data_url: str
+
+
+class ExportRequest(BaseModel):
+    saved_name: str
+    filename: str = "report"
+    charts: List[ExportChart] = []
 
 
 def _disposition(filename: str, ext: str) -> str:
@@ -31,6 +50,25 @@ def export_docx(
     )
 
 
+@router.post("/docx")
+def export_docx_with_charts(payload: ExportRequest):
+    try:
+        docx = export_report_docx(
+            payload.saved_name,
+            payload.filename,
+            charts=[c.model_dump() for c in payload.charts],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return StreamingResponse(
+        docx,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": _disposition(payload.filename, ".docx")},
+    )
+
+
 @router.get("/excel")
 def export_excel(
     saved_name: str = Query(...),
@@ -46,4 +84,60 @@ def export_excel(
         xlsx,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": _disposition(filename, ".xlsx")},
+    )
+
+
+@router.get("/pdf")
+def export_pdf(
+    saved_name: str = Query(...),
+    filename: str = Query(default="report"),
+):
+    try:
+        pdf = export_report_pdf(saved_name, filename)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return StreamingResponse(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": _disposition(filename, ".pdf")},
+    )
+
+
+@router.post("/pdf")
+def export_pdf_with_charts(payload: ExportRequest):
+    try:
+        pdf = export_report_pdf(
+            payload.saved_name,
+            payload.filename,
+            charts=[c.model_dump() for c in payload.charts],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return StreamingResponse(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": _disposition(payload.filename, ".pdf")},
+    )
+
+
+@router.post("/pptx")
+def export_pptx(payload: ExportRequest):
+    try:
+        pptx = export_report_pptx(
+            payload.saved_name,
+            payload.filename,
+            charts=[c.model_dump() for c in payload.charts],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return StreamingResponse(
+        pptx,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": _disposition(payload.filename, ".pptx")},
     )

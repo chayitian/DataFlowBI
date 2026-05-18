@@ -39,6 +39,7 @@ def build_report(dataframe: pd.DataFrame) -> dict:
     missing_heatmap = _build_missing_heatmap(dataframe)
     timeseries = _build_timeseries(dataframe)
     outliers = _build_outliers(dataframe)
+    quality = build_quality(dataframe)
 
     return {
         "dtypes": dtypes,
@@ -58,7 +59,54 @@ def build_report(dataframe: pd.DataFrame) -> dict:
         "missing_heatmap": missing_heatmap,
         "timeseries": timeseries,
         "outliers": outliers,
+        "quality": quality,
     }
+
+
+def build_quality(dataframe: pd.DataFrame) -> dict:
+    n_rows = len(dataframe)
+    if dataframe.empty:
+        fields = {
+            str(col): {"missing_rate": 0.0, "outlier_rate": 0.0, "score": 0.0}
+            for col in dataframe.columns
+        }
+        return {"overall": 0.0, "fields": fields}
+
+    missing_rate = dataframe.isna().mean() if n_rows else pd.Series(dtype="float64")
+    numeric_df = dataframe.select_dtypes(include="number")
+    outlier_rates: dict[str, float] = {}
+
+    for col in numeric_df.columns:
+        series = numeric_df[col].dropna()
+        if series.empty:
+            outlier_rates[str(col)] = 0.0
+            continue
+        q1 = float(series.quantile(0.25))
+        q3 = float(series.quantile(0.75))
+        iqr = q3 - q1
+        if iqr == 0:
+            outlier_rates[str(col)] = 0.0
+            continue
+        lower = q1 - 1.5 * iqr
+        upper = q3 + 1.5 * iqr
+        outlier_count = int(((series < lower) | (series > upper)).sum())
+        outlier_rates[str(col)] = outlier_count / max(1, len(series))
+
+    fields: dict[str, dict[str, Any]] = {}
+    for col in dataframe.columns:
+        mr = float(missing_rate.get(col, 0.0)) if n_rows else 0.0
+        orate = float(outlier_rates.get(str(col), 0.0))
+        score = 100.0 - (mr * 100.0) - (orate * 50.0)
+        if score < 0:
+            score = 0.0
+        fields[str(col)] = {
+            "missing_rate": _normalize_value(mr),
+            "outlier_rate": _normalize_value(orate),
+            "score": round(score, 2),
+        }
+
+    overall = round(sum(f["score"] for f in fields.values()) / len(fields), 2) if fields else 0.0
+    return {"overall": overall, "fields": fields}
 
 
 def _build_numeric_summary(dataframe: pd.DataFrame) -> dict:

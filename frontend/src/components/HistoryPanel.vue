@@ -15,8 +15,11 @@
               <th>{{ t("filename") }}</th>
               <th>{{ t("rows") }}</th>
               <th>{{ t("columns") }}</th>
+              <th>{{ t("versionLabel") }}</th>
+              <th>{{ t("tagLabel") }}</th>
               <th>{{ t("uploadTime") }}</th>
               <th>{{ t("action") }}</th>
+              <th>{{ t("compareLabel") }}</th>
             </tr>
           </thead>
           <tbody>
@@ -24,15 +27,60 @@
               <td>{{ record.original_filename }}</td>
               <td>{{ record.row_count }}</td>
               <td>{{ record.column_count }}</td>
+              <td>{{ record.version ?? "-" }}</td>
+              <td>{{ record.tag || "-" }}</td>
               <td>{{ formatTime(record.created_at) }}</td>
               <td>
                 <button class="load-btn" :disabled="loadingId === record.id" @click="loadRecord(record)">
                   {{ loadingId === record.id ? t("loading") : t("loadRecord") }}
                 </button>
               </td>
+              <td>
+                <button
+                  v-if="!compareBase"
+                  class="compare-btn"
+                  @click="setCompareBase(record)"
+                >
+                  {{ t("compareSetBase") }}
+                </button>
+                <button
+                  v-else
+                  class="compare-btn"
+                  :disabled="compareBase.id === record.id"
+                  @click="runCompare(record)"
+                >
+                  {{ t("compareWith") }}
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
+        <div v-if="compareBase" class="compare-base">
+          <span>{{ t("compareBase") }}: #{{ compareBase.id }} (v{{ compareBase.version ?? "-" }})</span>
+          <button class="ghost-button" type="button" @click="clearCompare">{{ t("compareClear") }}</button>
+        </div>
+        <div v-if="compareError" class="error">{{ compareError }}</div>
+        <div v-if="compareResult" class="compare-panel">
+          <div class="compare-title">{{ t("compareResult") }}</div>
+          <div class="compare-grid">
+            <div></div>
+            <div>{{ t("compareBase") }}</div>
+            <div>{{ t("compareTarget") }}</div>
+            <div>{{ t("compareDelta") }}</div>
+            <div>{{ t("rows") }}</div>
+            <div>{{ compareResult.from.rows }}</div>
+            <div>{{ compareResult.to.rows }}</div>
+            <div>{{ compareResult.delta.rows }}</div>
+            <div>{{ t("cleanMissingRateAvg") }}</div>
+            <div>{{ formatPercent(compareResult.from.missing_rate_avg) }}</div>
+            <div>{{ formatPercent(compareResult.to.missing_rate_avg) }}</div>
+            <div>{{ formatPercent(compareResult.delta.missing_rate_avg) }}</div>
+            <div>{{ t("cleanQualityOverall") }}</div>
+            <div>{{ formatScore(compareResult.from.quality_overall) }}</div>
+            <div>{{ formatScore(compareResult.to.quality_overall) }}</div>
+            <div>{{ formatScore(compareResult.delta.quality_overall) }}</div>
+          </div>
+        </div>
         <div v-if="totalPages > 1" class="pagination">
           <button :disabled="page <= 1" @click="changePage(page - 1)">&laquo;</button>
           <span>{{ page }} / {{ totalPages }}</span>
@@ -46,7 +94,7 @@
 <script setup>
 import { ref, computed, watch } from "vue";
 import { useI18n } from "../composables/useI18n";
-import { getHistory } from "../api/upload";
+import { getHistory, compareHistory } from "../api/upload";
 
 const { t } = useI18n();
 
@@ -60,9 +108,12 @@ const records = ref([]);
 const loading = ref(false);
 const loadingId = ref(null);
 const error = ref("");
+const compareError = ref("");
 const page = ref(1);
 const total = ref(0);
 const pageSize = 10;
+const compareBase = ref(null);
+const compareResult = ref(null);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
 
@@ -90,6 +141,29 @@ const loadRecord = async (record) => {
   }
 };
 
+const setCompareBase = (record) => {
+  compareBase.value = record;
+  compareResult.value = null;
+  compareError.value = "";
+};
+
+const clearCompare = () => {
+  compareBase.value = null;
+  compareResult.value = null;
+  compareError.value = "";
+};
+
+const runCompare = async (record) => {
+  if (!compareBase.value || compareBase.value.id === record.id) return;
+  compareError.value = "";
+  try {
+    compareResult.value = await compareHistory(compareBase.value.id, record.id);
+  } catch (e) {
+    compareError.value = e?.response?.data?.detail || "Compare failed";
+    compareResult.value = null;
+  }
+};
+
 const changePage = (newPage) => {
   page.value = newPage;
   fetchHistory();
@@ -101,12 +175,23 @@ const formatTime = (timeStr) => {
   return d.toLocaleString();
 };
 
+const formatPercent = (value) => {
+  if (value === null || value === undefined) return "-";
+  return `${(Number(value) * 100).toFixed(1)}%`;
+};
+
+const formatScore = (value) => {
+  if (value === null || value === undefined) return "-";
+  return Number(value).toFixed(1);
+};
+
 watch(page, () => { fetchHistory(); });
 
 watch(() => props.show, (val) => {
   if (val) {
     page.value = 1;
     fetchHistory();
+    clearCompare();
   }
 });
 </script>
@@ -189,6 +274,49 @@ watch(() => props.show, (val) => {
 .load-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+.compare-btn {
+  padding: 4px 10px;
+  border: 1px solid #10b981;
+  background: #10b981;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.compare-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.compare-base {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #374151;
+}
+.compare-panel {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fafafa;
+}
+.compare-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 6px 10px;
+  font-size: 12px;
+  color: #4b5563;
 }
 .pagination {
   display: flex;

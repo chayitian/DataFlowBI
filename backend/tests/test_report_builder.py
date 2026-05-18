@@ -24,6 +24,7 @@ class TestBuildReport:
         assert "missing_heatmap" in report
         assert "timeseries" in report
         assert "outliers" in report
+        assert "quality" in report
 
     def test_dtypes(self, sample_df):
         report = build_report(sample_df)
@@ -106,6 +107,7 @@ class TestBuildReport:
             "sampled": False,
             "data": [],
         }
+        assert report["quality"]["overall"] == 0.0
 
     def test_numeric_only(self, numeric_only_df):
         report = build_report(numeric_only_df)

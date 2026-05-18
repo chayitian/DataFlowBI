@@ -72,8 +72,18 @@
           @download="downloadChart"
           @setup="openChartSetup"
           @exportDocx="handleExportDocx"
+          @exportPdf="handleExportPdf"
           @exportExcel="handleExportExcel"
+          @exportPptx="handleExportPptx"
         />
+        <button
+          v-if="hasParsed"
+          class="clean-btn"
+          type="button"
+          @click="showCleanPanel = true"
+        >
+          {{ t("cleanTitle") }}
+        </button>
         <ChartOptionsPanel
           :show="showChartOptions && hasCharts"
           :analysisOptions="analysisOptions"
@@ -150,6 +160,15 @@
       @reset="resetFilter"
       @close="showFilterPanel = false"
     />
+    <CleanPanel
+      :show="showCleanPanel"
+      :fields="preview?.fields || []"
+      :filterInfo="preview?.filter_info"
+      :quality="preview?.report?.quality"
+      :savedName="savedName"
+      @close="showCleanPanel = false"
+      @cleaned="onCleaned"
+    />
     <HistoryPanel
       :show="showHistory"
       @close="showHistory = false"
@@ -164,7 +183,7 @@ import { useI18n } from "./composables/useI18n";
 import { useFileUpload } from "./composables/useFileUpload";
 import { useSelection } from "./composables/useSelection";
 import { useChart } from "./composables/useChart";
-import { exportReportDocx, exportReportExcel } from "./api/upload";
+import { exportReportDocx, exportReportExcel, exportReportPdf, exportReportPptx } from "./api/upload";
 import SettingsMenu from "./components/SettingsMenu.vue";
 import PreviewCard from "./components/PreviewCard.vue";
 import ReportSection from "./components/ReportSection.vue";
@@ -174,6 +193,7 @@ import FilterPanel from "./components/FilterPanel.vue";
 import ChartToolbar from "./components/ChartToolbar.vue";
 import ChartOptionsPanel from "./components/ChartOptionsPanel.vue";
 import HistoryPanel from "./components/HistoryPanel.vue";
+import CleanPanel from "./components/CleanPanel.vue";
 
 const { locale, t, setLanguage } = useI18n();
 const showSettingsMenu = ref(false);
@@ -213,6 +233,7 @@ const {
 _syncChartSelection = syncChartSelection;
 
 const showChartOptions = ref(true);
+const showCleanPanel = ref(false);
 
 const hasCharts = computed(
   () => showChartSection.value && analysisOptions.value.length > 0
@@ -250,10 +271,24 @@ const downloadBlob = (blob, filename) => {
   URL.revokeObjectURL(url);
 };
 
+const buildChartPayload = () => {
+  if (!chartInstance.value || !hasChartData.value) return [];
+  const dataUrl = chartInstance.value.getDataURL({
+    type: "png",
+    pixelRatio: 2,
+    backgroundColor: "#fff",
+  });
+  return [{ title: currentChartTitle.value || "Chart", data_url: dataUrl }];
+};
+
 const handleExportDocx = async () => {
   if (!savedName.value) return;
   try {
-    const blob = await exportReportDocx(savedName.value, preview.value?.filename || "report");
+    const blob = await exportReportDocx(
+      savedName.value,
+      preview.value?.filename || "report",
+      buildChartPayload()
+    );
     downloadBlob(blob, `${preview.value?.filename || "report"}.docx`);
   } catch (e) {
     console.error("Word export failed:", e);
@@ -269,6 +304,44 @@ const handleExportExcel = async () => {
   } catch (e) {
     console.error("Excel export failed:", e);
     errorMessage.value = e?.response?.data?.detail || "Excel export failed";
+  }
+};
+
+const onCleaned = (result) => {
+  preview.value = { ...preview.value, ...result };
+  if (result?.saved_name) {
+    savedName.value = result.saved_name;
+  }
+  showCleanPanel.value = false;
+};
+
+const handleExportPdf = async () => {
+  if (!savedName.value) return;
+  try {
+    const blob = await exportReportPdf(
+      savedName.value,
+      preview.value?.filename || "report",
+      buildChartPayload()
+    );
+    downloadBlob(blob, `${preview.value?.filename || "report"}.pdf`);
+  } catch (e) {
+    console.error("PDF export failed:", e);
+    errorMessage.value = e?.response?.data?.detail || "PDF export failed";
+  }
+};
+
+const handleExportPptx = async () => {
+  if (!savedName.value) return;
+  try {
+    const blob = await exportReportPptx(
+      savedName.value,
+      preview.value?.filename || "report",
+      buildChartPayload()
+    );
+    downloadBlob(blob, `${preview.value?.filename || "report"}.pptx`);
+  } catch (e) {
+    console.error("PPT export failed:", e);
+    errorMessage.value = e?.response?.data?.detail || "PPT export failed";
   }
 };
 

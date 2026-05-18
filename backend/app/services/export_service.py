@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import base64
+import os
 from io import BytesIO
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 import pandas as pd
@@ -11,6 +14,27 @@ from docx.oxml.ns import qn
 
 from app.services.file_preview import DATA_CACHE
 from app.services.report_builder import build_report
+
+
+def _decode_chart_images(charts: list[dict]) -> list[tuple[str, bytes, str]]:
+    images: list[tuple[str, bytes, str]] = []
+    for chart in charts or []:
+        data_url = chart.get("data_url") or chart.get("dataUrl") or chart.get("image")
+        if not data_url:
+            continue
+        title = chart.get("title") or "Chart"
+        ext = "png"
+        payload = data_url
+        if data_url.startswith("data:"):
+            header, payload = data_url.split(",", 1)
+            if "image/" in header:
+                ext = header.split("image/")[1].split(";")[0].strip()
+        try:
+            raw = base64.b64decode(payload)
+        except Exception:
+            continue
+        images.append((title, raw, ext))
+    return images
 
 
 def _get_report(saved_name: str) -> dict:
@@ -29,7 +53,7 @@ def _set_cell_shading(cell, color: str):
     shading_elm.append(shading)
 
 
-def export_report_docx(saved_name: str, original_filename: str) -> BytesIO:
+def export_report_docx(saved_name: str, original_filename: str, charts: list[dict] | None = None) -> BytesIO:
     report = _get_report(saved_name)
     doc = Document()
     style = doc.styles["Normal"]
@@ -101,8 +125,95 @@ def export_report_docx(saved_name: str, original_filename: str) -> BytesIO:
 
         doc.add_paragraph("")
 
+    if charts:
+        doc.add_heading("Charts", level=1)
+        for title, image_bytes, _ in _decode_chart_images(charts):
+            doc.add_paragraph(title)
+            doc.add_picture(BytesIO(image_bytes), width=Inches(5.8))
+            doc.add_paragraph("")
+
     buf = BytesIO()
     doc.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def export_report_pdf(saved_name: str, original_filename: str, charts: list[dict] | None = None) -> BytesIO:
+    report = _get_report(saved_name)
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 12, "DataFlowBI Analysis Report", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(0, 8, f"Source file: {original_filename}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    def write_table(headers, rows, col_widths=None):
+        if not col_widths:
+            col_widths = [pdf.w / (len(headers) + 1)] * len(headers)
+        pdf.set_font("Helvetica", "B", 9)
+        for i, h in enumerate(headers):
+            pdf.cell(col_widths[i], 8, str(h), border=1)
+        pdf.ln()
+        pdf.set_font("Helvetica", "", 8)
+        for row in rows:
+            for i, cell in enumerate(row):
+                pdf.cell(col_widths[i], 7, str(cell)[:30], border=1)
+            pdf.ln()
+
+    missing = report.get("missing", {})
+    if missing:
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 10, "Missing Statistics", new_x="LMARGIN", new_y="NEXT")
+        mr = report.get("missing_rate", {})
+        headers = ["Field", "Missing Count", "Missing Rate"]
+        rows = [[f, missing[f], f"{mr.get(f, 0):.2%}"] for f in sorted(missing)]
+        write_table(headers, rows)
+
+    ns = report.get("numeric_summary", {})
+    if ns:
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 10, "Numeric Summary", new_x="LMARGIN", new_y="NEXT")
+        headers = ["Field", "Count", "Mean", "Std", "Min", "Max"]
+        rows = []
+        for f, s in sorted(ns.items()):
+            rows.append([f, s.get("count", ""), f"{s.get('mean', ''):.4f}" if isinstance(s.get("mean"), float) else str(s.get("mean", "")),
+                         f"{s.get('std', ''):.4f}" if isinstance(s.get("std"), float) else str(s.get("std", "")),
+                         f"{s.get('min', ''):.4f}" if isinstance(s.get("min"), float) else str(s.get("min", "")),
+                         f"{s.get('max', ''):.4f}" if isinstance(s.get("max"), float) else str(s.get("max", ""))])
+        write_table(headers, rows)
+
+    sample = report.get("sample_rows", [])
+    if sample:
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 10, "Sample Data (First 5 Rows)", new_x="LMARGIN", new_y="NEXT")
+        headers = list(sample[0].keys())
+        rows = [[str(r.get(c, ""))[:20] for c in headers] for r in sample]
+        write_table(headers, rows, col_widths=[pdf.w / (len(headers) + 1)] * len(headers))
+
+    if charts:
+        pdf.add_page()
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 10, "Charts", new_x="LMARGIN", new_y="NEXT")
+        for title, image_bytes, ext in _decode_chart_images(charts):
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.cell(0, 8, title, new_x="LMARGIN", new_y="NEXT")
+            tmp_path = None
+            try:
+                with NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                    tmp.write(image_bytes)
+                    tmp.flush()
+                    tmp_path = tmp.name
+                pdf.image(tmp_path, w=pdf.w - 20)
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            pdf.ln(4)
+
+    buf = BytesIO()
+    pdf.output(buf)
     buf.seek(0)
     return buf
 
@@ -130,20 +241,19 @@ def export_report_excel(saved_name: str, original_filename: str) -> BytesIO:
 
     with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
         workbook = writer.book
+        header_fmt = workbook.add_format({"bold": True, "bg_color": "#f3f4f6", "border": 1})
         for sheet_name, data in sheet_map:
             if not data:
                 continue
 
             safe_name = sheet_name[:31]
+            df = None
             if isinstance(data, list):
                 df = pd.DataFrame(data)
-                if not df.empty:
-                    df.to_excel(writer, sheet_name=safe_name, index=False)
             elif isinstance(data, dict):
                 try:
                     df = pd.DataFrame(data).transpose().reset_index()
                     df.columns = ["Field"] + [str(c) for c in df.columns[1:]]
-                    df.to_excel(writer, sheet_name=safe_name, index=False)
                 except (ValueError, TypeError):
                     rows = []
                     for k, v in data.items():
@@ -154,7 +264,48 @@ def export_report_excel(saved_name: str, original_filename: str) -> BytesIO:
                         else:
                             rows.append({"Field": k, "Value": v})
                     if rows:
-                        pd.DataFrame(rows).to_excel(writer, sheet_name=safe_name, index=False)
+                        df = pd.DataFrame(rows)
 
+            if df is None or df.empty:
+                continue
+
+            df.to_excel(writer, sheet_name=safe_name, index=False)
+            worksheet = writer.sheets[safe_name]
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(0, col_num, value, header_fmt)
+                series = df.iloc[:, col_num].astype(str)
+                max_len = max(series.map(len).max(), len(str(value))) + 2
+                worksheet.set_column(col_num, col_num, min(max_len, 40))
+
+    buf.seek(0)
+    return buf
+
+
+def export_report_pptx(saved_name: str, original_filename: str, charts: list[dict] | None = None) -> BytesIO:
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    report = _get_report(saved_name)
+    images = _decode_chart_images(charts or [])
+    prs = Presentation()
+
+    title_slide = prs.slides.add_slide(prs.slide_layouts[0])
+    title_slide.shapes.title.text = "DataFlowBI Analysis Report"
+    title_slide.placeholders[1].text = f"Source file: {original_filename}"
+
+    summary_slide = prs.slides.add_slide(prs.slide_layouts[5])
+    summary_slide.shapes.title.text = "Summary"
+    body = summary_slide.shapes.add_textbox(Inches(0.8), Inches(1.6), Inches(8.5), Inches(4.5)).text_frame
+    field_count = len(report.get("dtypes", {}))
+    body.text = f"Fields: {field_count}"
+
+    if images:
+        for title, image_bytes, _ in images:
+            slide = prs.slides.add_slide(prs.slide_layouts[5])
+            slide.shapes.title.text = title
+            slide.shapes.add_picture(BytesIO(image_bytes), Inches(0.6), Inches(1.6), width=Inches(8.8))
+
+    buf = BytesIO()
+    prs.save(buf)
     buf.seek(0)
     return buf
