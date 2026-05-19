@@ -31,6 +31,15 @@
             {{ isUploading ? t("uploading") : t("parseData") }}
           </button>
         </div>
+        <div v-if="hasParsed" class="actions actions--secondary">
+          <button
+            class="primary-btn primary-btn--blue"
+            type="button"
+            @click="showCleanPanel = true"
+          >
+            {{ t("cleanTitle") }}
+          </button>
+        </div>
         <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
       </div>
 
@@ -69,21 +78,9 @@
           @toggleOptions="toggleChartOptions"
           @toggleFilter="showFilterPanel = !showFilterPanel"
           @toggleComparison="comparisonMode = !comparisonMode; selectedComparisonFields = []"
-          @download="downloadChart"
           @setup="openChartSetup"
-          @exportDocx="handleExportDocx"
-          @exportPdf="handleExportPdf"
-          @exportExcel="handleExportExcel"
-          @exportPptx="handleExportPptx"
+          @openExport="showExportPanel = true"
         />
-        <button
-          v-if="hasParsed"
-          class="clean-btn"
-          type="button"
-          @click="showCleanPanel = true"
-        >
-          {{ t("cleanTitle") }}
-        </button>
         <ChartOptionsPanel
           :show="showChartOptions && hasCharts"
           :analysisOptions="analysisOptions"
@@ -131,6 +128,141 @@
       </div>
     </section>
 
+    <section v-if="hasParsed" class="ml-section">
+      <div class="chart-header">
+        <h2>{{ t("mlTitle") }}</h2>
+        <p>{{ t("mlSubtitle") }}</p>
+      </div>
+      <div class="ml-panel">
+        <div class="ml-toolbar">
+          <button class="primary-btn" type="button" @click="openMLDialog">
+            {{ t("mlOpen") }}
+          </button>
+        </div>
+        <div v-if="mlLoading" class="loading">{{ t("loading") }}</div>
+        <div v-else-if="mlError" class="error">{{ mlError }}</div>
+        <div v-else-if="!mlResult" class="empty-state">{{ t("mlEmpty") }}</div>
+        <div v-else class="ml-results">
+          <div class="ml-summary">
+            <div>{{ t("mlTaskType") }}: {{ mlResult.task_type }}</div>
+            <div>{{ t("mlModel") }}: {{ mlResult.model_type }}</div>
+            <div>{{ t("mlTarget") }}: {{ mlResult.target }}</div>
+            <div>{{ t("mlFeatureCount") }}: {{ mlResult.features?.length || 0 }}</div>
+            <div>{{ t("mlTrainSize") }}: {{ mlResult.split?.sizes?.train }}</div>
+            <div v-if="mlResult.split?.sizes?.val">{{ t("mlValSize") }}: {{ mlResult.split?.sizes?.val }}</div>
+            <div>{{ t("mlTestSize") }}: {{ mlResult.split?.sizes?.test }}</div>
+          </div>
+
+          <div class="ml-metrics">
+            <div class="selection-label">{{ t("mlMetrics") }}</div>
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th>{{ t("mlSplit") }}</th>
+                  <th>{{ t("mlMetricR2") }}</th>
+                  <th>{{ t("mlMetricMAE") }}</th>
+                  <th>{{ t("mlMetricRMSE") }}</th>
+                  <th>{{ t("mlMetricAcc") }}</th>
+                  <th>{{ t("mlMetricPrecision") }}</th>
+                  <th>{{ t("mlMetricRecall") }}</th>
+                  <th>{{ t("mlMetricF1") }}</th>
+                  <th>{{ t("mlMetricAUC") }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>train</td>
+                  <td>{{ formatMetric(mlResult.metrics?.train?.r2) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.train?.mae) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.train?.rmse) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.train?.accuracy) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.train?.precision) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.train?.recall) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.train?.f1) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.train?.roc_auc) }}</td>
+                </tr>
+                <tr v-if="hasValMetrics">
+                  <td>val</td>
+                  <td>{{ formatMetric(mlResult.metrics?.val?.r2) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.val?.mae) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.val?.rmse) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.val?.accuracy) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.val?.precision) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.val?.recall) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.val?.f1) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.val?.roc_auc) }}</td>
+                </tr>
+                <tr>
+                  <td>test</td>
+                  <td>{{ formatMetric(mlResult.metrics?.test?.r2) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.test?.mae) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.test?.rmse) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.test?.accuracy) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.test?.precision) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.test?.recall) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.test?.f1) }}</td>
+                  <td>{{ formatMetric(mlResult.metrics?.test?.roc_auc) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div v-if="mlResult.ols" class="ml-ols">
+            <div class="selection-label">{{ t("mlOlsTitle") }}</div>
+            <div class="ml-ols-summary">
+              <span>R2: {{ formatMetric(mlResult.ols.summary?.r2) }}</span>
+              <span>Adj R2: {{ formatMetric(mlResult.ols.summary?.adj_r2) }}</span>
+              <span>AIC: {{ formatMetric(mlResult.ols.summary?.aic) }}</span>
+              <span>BIC: {{ formatMetric(mlResult.ols.summary?.bic) }}</span>
+              <span>N: {{ mlResult.ols.summary?.nobs }}</span>
+            </div>
+            <div class="report-table-wrapper">
+              <table class="report-table">
+                <thead>
+                  <tr>
+                    <th>{{ t("mlFeature") }}</th>
+                    <th>Coef.</th>
+                    <th>Std.Err.</th>
+                    <th>t</th>
+                    <th>P>|t|</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in mlResult.ols.table" :key="row.feature">
+                    <td>{{ row.feature }}</td>
+                    <td>{{ formatMetric(row['Coef.']) }}</td>
+                    <td>{{ formatMetric(row['Std.Err.']) }}</td>
+                    <td>{{ formatMetric(row['t']) }}</td>
+                    <td>{{ formatMetric(row['P>|t|']) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div v-else class="ml-coef">
+            <div class="selection-label">{{ t("mlCoeffTitle") }}</div>
+            <div class="report-table-wrapper">
+              <table class="report-table">
+                <thead>
+                  <tr>
+                    <th>{{ t("mlFeature") }}</th>
+                    <th>{{ t("mlCoefficient") }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in mlResult.coefficients || []" :key="row.feature + (row.class ?? '')">
+                    <td>{{ row.feature }}</td>
+                    <td>{{ formatMetric(row.coef) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <SelectionDialog
       :show="showSelection"
       :selection="selection"
@@ -154,11 +286,22 @@
       :ranges="filterNumericRanges"
       :allFields="preview?.fields || []"
       :selectedFields="selectedFields"
+      :selectionMode="selectionMode"
       @update:ranges="filterNumericRanges = $event"
       @update:selectedFields="selectedFields = $event"
       @apply="applyFilter"
       @reset="resetFilter"
       @close="showFilterPanel = false"
+    />
+    <ExportDialog
+      :show="showExportPanel"
+      :selectionMode="selectionMode"
+      @close="showExportPanel = false"
+      @download="downloadChart"
+      @exportDocx="handleExportDocx"
+      @exportPdf="handleExportPdf"
+      @exportExcel="handleExportExcel"
+      @exportPptx="handleExportPptx"
     />
     <CleanPanel
       :show="showCleanPanel"
@@ -166,13 +309,23 @@
       :filterInfo="preview?.filter_info"
       :quality="preview?.report?.quality"
       :savedName="savedName"
+      :selectionMode="selectionMode"
       @close="showCleanPanel = false"
       @cleaned="onCleaned"
     />
     <HistoryPanel
       :show="showHistory"
+      :selectionMode="selectionMode"
       @close="showHistory = false"
       @select="onHistorySelect"
+    />
+    <MachineLearningDialog
+      :show="showMLDialog"
+      :selectionMode="selectionMode"
+      :fields="preview?.fields || []"
+      :filterInfo="preview?.filter_info"
+      @close="showMLDialog = false"
+      @train="runMLTrain"
     />
   </div>
 </template>
@@ -184,6 +337,7 @@ import { useFileUpload } from "./composables/useFileUpload";
 import { useSelection } from "./composables/useSelection";
 import { useChart } from "./composables/useChart";
 import { exportReportDocx, exportReportExcel, exportReportPdf, exportReportPptx } from "./api/upload";
+import { trainModel } from "./api/ml";
 import SettingsMenu from "./components/SettingsMenu.vue";
 import PreviewCard from "./components/PreviewCard.vue";
 import ReportSection from "./components/ReportSection.vue";
@@ -194,6 +348,8 @@ import ChartToolbar from "./components/ChartToolbar.vue";
 import ChartOptionsPanel from "./components/ChartOptionsPanel.vue";
 import HistoryPanel from "./components/HistoryPanel.vue";
 import CleanPanel from "./components/CleanPanel.vue";
+import ExportDialog from "./components/ExportDialog.vue";
+import MachineLearningDialog from "./components/MachineLearningDialog.vue";
 
 const { locale, t, setLanguage } = useI18n();
 const showSettingsMenu = ref(false);
@@ -234,6 +390,11 @@ _syncChartSelection = syncChartSelection;
 
 const showChartOptions = ref(true);
 const showCleanPanel = ref(false);
+const showExportPanel = ref(false);
+const showMLDialog = ref(false);
+const mlLoading = ref(false);
+const mlError = ref("");
+const mlResult = ref(null);
 
 const hasCharts = computed(
   () => showChartSection.value && analysisOptions.value.length > 0
@@ -350,6 +511,38 @@ const toggleChartOptions = () => {
   showChartOptions.value = !showChartOptions.value;
 };
 
+const openMLDialog = () => {
+  if (!hasParsed.value) return;
+  showMLDialog.value = true;
+};
+
+const runMLTrain = async (config) => {
+  if (!savedName.value) return;
+  mlLoading.value = true;
+  mlError.value = "";
+  try {
+    const result = await trainModel({
+      saved_name: savedName.value,
+      ...config,
+    });
+    mlResult.value = result;
+  } catch (e) {
+    mlError.value = e?.response?.data?.detail || "ML training failed";
+  } finally {
+    mlLoading.value = false;
+    showMLDialog.value = false;
+  }
+};
+
+const formatMetric = (value) => {
+  if (value === null || value === undefined) return "-";
+  const n = Number(value);
+  if (Number.isNaN(n)) return String(value);
+  return n.toFixed(4);
+};
+
+const hasValMetrics = computed(() => Boolean(mlResult.value?.metrics?.val));
+
 const confirmSelection = async () => {
   const normalized = {
     preview: Boolean(selection.value.preview),
@@ -407,6 +600,11 @@ watch(showChartSection, (value) => {
   }
   if (!value) showChartOptions.value = false;
   nextTick(renderChart);
+});
+
+watch(savedName, () => {
+  mlResult.value = null;
+  mlError.value = "";
 });
 
 onMounted(() => {

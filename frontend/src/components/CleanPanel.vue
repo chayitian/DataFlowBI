@@ -1,6 +1,12 @@
 <template>
   <div v-if="show" class="selection-overlay" @click.self="$emit('close')">
-    <div class="selection-panel is-dialog clean-panel">
+    <div
+      :class="[
+        'selection-panel',
+        'clean-panel',
+        selectionMode === 'drawer' ? 'is-drawer' : 'is-dialog',
+      ]"
+    >
       <div class="selection-header">
         <h3>{{ t("cleanTitle") }}</h3>
         <button class="icon-button" type="button" @click="$emit('close')">×</button>
@@ -172,6 +178,7 @@ const props = defineProps({
   filterInfo: Object,
   savedName: String,
   quality: Object,
+  selectionMode: String,
 });
 
 const emit = defineEmits(["close", "cleaned"]);

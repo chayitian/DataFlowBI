@@ -4,7 +4,12 @@
     class="selection-overlay"
     @click.self="$emit('close')"
   >
-    <div class="selection-panel is-dialog">
+    <div
+      :class="[
+        'selection-panel',
+        selectionMode === 'drawer' ? 'is-drawer' : 'is-dialog',
+      ]"
+    >
       <div class="selection-header">
         <h3>{{ t("filterTitle") }}</h3>
         <button class="icon-button" type="button" @click="$emit('close')">
@@ -82,6 +87,7 @@ const props = defineProps({
   ranges: Object,
   allFields: Array,
   selectedFields: Array,
+  selectionMode: String,
 });
 
 const emit = defineEmits(["update:ranges", "apply", "reset", "update:selectedFields", "close"]);

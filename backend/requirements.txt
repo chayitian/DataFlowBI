@@ -15,3 +15,5 @@ xlsxwriter
 cryptography
 fpdf2
 python-pptx
+scikit-learn
+statsmodels

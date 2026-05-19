@@ -37,46 +37,9 @@
       <button
         class="chart-download-btn"
         type="button"
-        title="PNG"
-        @click="$emit('download', 'png')"
+        @click="$emit('openExport')"
       >
-        {{ t("downloadPNG") }}
-      </button>
-      <button
-        class="chart-download-btn"
-        type="button"
-        title="SVG"
-        @click="$emit('download', 'svg')"
-      >
-        {{ t("downloadSVG") }}
-      </button>
-      <button
-        class="chart-download-btn"
-        type="button"
-        @click="$emit('exportDocx')"
-      >
-        {{ t("exportWord") }}
-      </button>
-      <button
-        class="chart-download-btn"
-        type="button"
-        @click="$emit('exportPdf')"
-      >
-        {{ t("exportPdf") }}
-      </button>
-      <button
-        class="chart-download-btn"
-        type="button"
-        @click="$emit('exportExcel')"
-      >
-        {{ t("exportExcel") }}
-      </button>
-      <button
-        class="chart-download-btn"
-        type="button"
-        @click="$emit('exportPptx')"
-      >
-        {{ t("exportPpt") }}
+        {{ t("exportMenu") }}
       </button>
       <button
         class="chart-download-btn"
@@ -104,12 +67,8 @@ defineEmits([
   "toggleOptions",
   "toggleFilter",
   "toggleComparison",
-  "download",
   "setup",
-  "exportDocx",
-  "exportPdf",
-  "exportExcel",
-  "exportPptx",
+  "openExport",
 ]);
 
 const { t } = useI18n();

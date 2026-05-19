@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import clean, export, filter, health, history, rebin, upload
+from app.api import clean, export, filter, health, history, ml, rebin, upload
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -10,3 +10,4 @@ api_router.include_router(rebin.router, tags=["rebin"])
 api_router.include_router(filter.router, tags=["filter"])
 api_router.include_router(history.router)
 api_router.include_router(export.router)
+api_router.include_router(ml.router)

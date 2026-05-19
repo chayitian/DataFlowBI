@@ -4,7 +4,7 @@ import base64
 import os
 from io import BytesIO
 from tempfile import NamedTemporaryFile
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from docx import Document
@@ -53,7 +53,11 @@ def _set_cell_shading(cell, color: str):
     shading_elm.append(shading)
 
 
-def export_report_docx(saved_name: str, original_filename: str, charts: list[dict] | None = None) -> BytesIO:
+def export_report_docx(
+    saved_name: str,
+    original_filename: str,
+    charts: Optional[List[Dict[str, Any]]] = None,
+) -> BytesIO:
     report = _get_report(saved_name)
     doc = Document()
     style = doc.styles["Normal"]
@@ -138,7 +142,11 @@ def export_report_docx(saved_name: str, original_filename: str, charts: list[dic
     return buf
 
 
-def export_report_pdf(saved_name: str, original_filename: str, charts: list[dict] | None = None) -> BytesIO:
+def export_report_pdf(
+    saved_name: str,
+    original_filename: str,
+    charts: Optional[List[Dict[str, Any]]] = None,
+) -> BytesIO:
     report = _get_report(saved_name)
     from fpdf import FPDF
 
@@ -281,7 +289,11 @@ def export_report_excel(saved_name: str, original_filename: str) -> BytesIO:
     return buf
 
 
-def export_report_pptx(saved_name: str, original_filename: str, charts: list[dict] | None = None) -> BytesIO:
+def export_report_pptx(
+    saved_name: str,
+    original_filename: str,
+    charts: Optional[List[Dict[str, Any]]] = None,
+) -> BytesIO:
     from pptx import Presentation
     from pptx.util import Inches
 

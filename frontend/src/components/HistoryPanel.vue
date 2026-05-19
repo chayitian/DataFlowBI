@@ -1,11 +1,16 @@
 <template>
-  <div v-if="show" class="dialog-overlay" @click.self="$emit('close')">
-    <div class="history-dialog">
-      <div class="dialog-header">
-        <h2>{{ t("historyTitle") }}</h2>
-        <button class="close-btn" @click="$emit('close')">&times;</button>
+  <div v-if="show" class="selection-overlay" @click.self="$emit('close')">
+    <div
+      :class="[
+        'selection-panel',
+        selectionMode === 'drawer' ? 'is-drawer' : 'is-dialog',
+      ]"
+    >
+      <div class="selection-header">
+        <h3>{{ t("historyTitle") }}</h3>
+        <button class="icon-button" type="button" @click="$emit('close')">×</button>
       </div>
-      <div class="dialog-body">
+      <div class="selection-body">
         <div v-if="loading" class="loading">{{ t("loading") }}</div>
         <div v-else-if="error" class="error">{{ error }}</div>
         <div v-else-if="records.length === 0" class="empty">{{ t("historyEmpty") }}</div>
@@ -87,6 +92,11 @@
           <button :disabled="page >= totalPages" @click="changePage(page + 1)">&raquo;</button>
         </div>
       </div>
+      <div class="selection-footer">
+        <button class="ghost-button" type="button" @click="$emit('close')">
+          {{ t("cancel") }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -100,6 +110,7 @@ const { t } = useI18n();
 
 const props = defineProps({
   show: Boolean,
+  selectionMode: String,
 });
 
 const emit = defineEmits(["close", "select"]);
@@ -197,47 +208,6 @@ watch(() => props.show, (val) => {
 </script>
 
 <style scoped>
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.history-dialog {
-  background: #fff;
-  border-radius: 12px;
-  width: 720px;
-  max-width: 90vw;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-}
-.dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px 0;
-}
-.dialog-header h2 {
-  margin: 0;
-  font-size: 18px;
-}
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: #666;
-}
-.dialog-body {
-  padding: 16px 24px 24px;
-  overflow-y: auto;
-  flex: 1;
-}
 .loading, .empty, .error {
   text-align: center;
   padding: 40px 0;
