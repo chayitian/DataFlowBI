@@ -4,7 +4,7 @@
 
 ## 技术栈
 
-- **后端**: Python 3.11, FastAPI, Pandas, NumPy, SQLAlchemy, MySQL, Uvicorn
+- **后端**: Python 3.9-3.13, FastAPI, Pandas, NumPy, SQLAlchemy, PostgreSQL, Uvicorn
 - **前端**: Vue 3 (Composition API + `<script setup>`), Vite 5, ECharts 5 (懒加载), Axios
 - **架构**: 组件化前端（9 个组件 + 5 个 composable），模块化后端服务层
 
@@ -24,7 +24,7 @@ DATAFLOWBI/
 │   │   │   └── report_builder.py     # 16 项统计分析报告生成（含日/月/年时序）
 │   │   ├── models/                   # SQLAlchemy 模型（预留）
 │   │   ├── schemas/                  # Pydantic 模型（预留）
-│   │   ├── database/                 # MySQL 连接配置
+│   │   ├── database/                 # PostgreSQL 连接配置
 │   │   ├── utils/                    # 工具函数（预留）
 │   │   └── main.py                   # 应用入口
 │   ├── uploads/                      # 上传文件存储
@@ -93,7 +93,7 @@ App.vue（主布局 + watch 联动）
 | POST | `/history/{id}/reload` | 加载指定版本 |
 | GET | `/history/{id}/versions` | 同一数据集版本列表 |
 | GET | `/history/compare` | 版本对比（from_id/to_id） |
-| POST | `/history/{id}/import` | 导入版本到 MySQL |
+| POST | `/history/{id}/import` | 导入版本到 PostgreSQL |
 | GET | `/export/docx` | 导出 Word（无图表） |
 | POST | `/export/docx` | 导出 Word（含图表） |
 | GET | `/export/excel` | 导出 Excel |
@@ -177,9 +177,9 @@ App.vue（主布局 + watch 联动）
 
 ### 前置要求
 
-- Python 3.11+
+- Python 3.9 - 3.13（最低支持 3.9，Docker 默认 3.13）
 - Node.js 18+
-- MySQL 8+（可选，仅数据库持久化需要）
+- PostgreSQL 12+（可选，仅数据库持久化、历史记录与自动入库需要；推荐 16+）
 
 ### 后端
 
@@ -194,13 +194,26 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+可选：PostgreSQL 配置（用于历史记录、版本持久化和自动入库）。如果不配置或 PostgreSQL 未启动，上传、分析、清洗、特征工程和建模仍可运行，但历史记录会降级为空。
+
+```bash
+# Windows PowerShell
+$env:POSTGRES_HOST="localhost"
+$env:POSTGRES_PORT="5432"
+$env:POSTGRES_USER="postgres"
+$env:POSTGRES_PASSWORD="123456"
+$env:POSTGRES_DB="dataflowbi"
+```
+
+也可以复制 `backend/.env.example` 为 `backend/.env` 后修改配置。
+
 可选：自动入库开启（混合持久化）
 
 ```bash
-# 自动入库（MySQL 可用时）
-set AUTO_IMPORT_DB=1
+# 自动入库（PostgreSQL 可用时）
+$env:AUTO_IMPORT_DB="1"
 # 入库表冲突策略：replace 或 append
-set IMPORT_IF_EXISTS=replace
+$env:IMPORT_IF_EXISTS="replace"
 ```
 
 ### 前端
@@ -212,6 +225,14 @@ npm run dev
 ```
 
 如需自定义后端地址，设置环境变量 `VITE_API_BASE_URL=http://localhost:8000`。
+
+### Docker（可选）
+
+`docker-compose.yml` 使用 PostgreSQL 16 Alpine、Python 3.13 后端镜像和 Nginx 前端镜像：
+
+```bash
+docker compose up --build
+```
 
 ## 使用流程
 
@@ -252,14 +273,13 @@ cd frontend
 npm run test
 ```
 
-### E2E（Playwright / Cypress）
+### E2E（Playwright）
 
 确保前后端已启动后执行：
 
 ```bash
 cd frontend
 npm run test:e2e:playwright
-npm run test:e2e:cypress
 ```
 
 ### 性能测试（可选）

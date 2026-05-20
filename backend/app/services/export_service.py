@@ -1,3 +1,5 @@
+"""Word、PDF、Excel 和 PowerPoint 报告导出辅助函数。"""
+
 from __future__ import annotations
 
 import base64
@@ -8,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
@@ -16,7 +18,18 @@ from app.services.file_preview import DATA_CACHE
 from app.services.report_builder import build_report
 
 
+def _safe_cell_to_string(value: Any) -> str:
+    """计算 Excel 列宽时避免 pandas NA 值触发错误。"""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(value)
+
+
 def _decode_chart_images(charts: list[dict]) -> list[tuple[str, bytes, str]]:
+    """把前端 ECharts data URL 解码为原始图片字节。"""
     images: list[tuple[str, bytes, str]] = []
     for chart in charts or []:
         data_url = chart.get("data_url") or chart.get("dataUrl") or chart.get("image")
@@ -38,6 +51,7 @@ def _decode_chart_images(charts: list[dict]) -> list[tuple[str, bytes, str]]:
 
 
 def _get_report(saved_name: str) -> dict:
+    """基于缓存 DataFrame 重新生成最新报告。"""
     dataframe = DATA_CACHE.get(saved_name)
     if dataframe is None:
         raise ValueError("Session expired or file not found. Please re-upload.")
@@ -58,6 +72,7 @@ def export_report_docx(
     original_filename: str,
     charts: Optional[List[Dict[str, Any]]] = None,
 ) -> BytesIO:
+    """创建包含关键表格和可选图表图片的 Word 报告。"""
     report = _get_report(saved_name)
     doc = Document()
     style = doc.styles["Normal"]
@@ -147,6 +162,7 @@ def export_report_pdf(
     original_filename: str,
     charts: Optional[List[Dict[str, Any]]] = None,
 ) -> BytesIO:
+    """创建包含摘要表格和图表的紧凑 PDF 报告。"""
     report = _get_report(saved_name)
     from fpdf import FPDF
 
@@ -227,6 +243,7 @@ def export_report_pdf(
 
 
 def export_report_excel(saved_name: str, original_filename: str) -> BytesIO:
+    """根据报告分区创建多工作表 Excel 文件。"""
     report = _get_report(saved_name)
     buf = BytesIO()
 
@@ -281,7 +298,7 @@ def export_report_excel(saved_name: str, original_filename: str) -> BytesIO:
             worksheet = writer.sheets[safe_name]
             for col_num, value in enumerate(df.columns.values):
                 worksheet.write(0, col_num, value, header_fmt)
-                series = df.iloc[:, col_num].astype(str)
+                series = df.iloc[:, col_num].map(_safe_cell_to_string)
                 max_len = max(series.map(len).max(), len(str(value))) + 2
                 worksheet.set_column(col_num, col_num, min(max_len, 40))
 
@@ -294,6 +311,7 @@ def export_report_pptx(
     original_filename: str,
     charts: Optional[List[Dict[str, Any]]] = None,
 ) -> BytesIO:
+    """创建包含摘要页和图表页的 PowerPoint 文件。"""
     from pptx import Presentation
     from pptx.util import Inches
 

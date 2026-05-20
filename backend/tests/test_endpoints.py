@@ -1,13 +1,16 @@
-"""Tests for upload, history (mocked DB), export endpoints and reload_from_cache."""
+"""上传、历史记录（模拟 DB）、导出接口和 reload_from_cache 的测试。"""
 import io
+import warnings
 from pathlib import Path
 from unittest.mock import patch, MagicMock, PropertyMock
 
 import pandas as pd
 import pytest
 from fastapi import UploadFile
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.main import create_app
+from app.database.db import build_database_url
 from app.services.file_preview import (
     DATA_CACHE,
     _compute_file_hash,
@@ -17,6 +20,8 @@ from app.services.file_preview import (
     reload_from_cache,
 )
 from app.services.export_service import export_report_docx, export_report_excel
+from app.services.feature_engineering import engineer_features
+from app.services.ml_service import train_model
 
 
 SAMPLE_CSV = b"name,age,salary\nAlice,25,50000\nBob,30,60000\n"
@@ -292,6 +297,183 @@ class TestCleanData:
         assert data["rows"] == 2
 
 
+class TestFeatureEngineering:
+    def test_engineer_features_creates_new_columns(self, seeded_cache):
+        DATA_CACHE[seeded_cache] = pd.DataFrame({
+            "age": [25, 30, 35],
+            "dept": ["Engineering", "Sales", "Engineering"],
+            "start_date": ["2020-01-01", "2021-02-03", "2022-03-04"],
+            "target": [1, 2, 3],
+        })
+
+        result = engineer_features(
+            seeded_cache,
+            numeric_transforms={"age": "standardize"},
+            categorical_fields=["dept"],
+            datetime_fields=["start_date"],
+        )
+
+        assert "age_standardized" in result["fields"]
+        assert "dept_Engineering" in result["fields"]
+        assert "start_date_year" in result["fields"]
+        assert result["columns"] > 4
+        assert result["saved_name"] in DATA_CACHE
+        assert any(log["operation"] == "numeric_transform" for log in result["feature_engineering_log"])
+
+    def test_engineer_features_requires_operation(self, seeded_cache):
+        DATA_CACHE[seeded_cache] = pd.DataFrame({"age": [25, 30, 35]})
+        with pytest.raises(Exception) as exc:
+            engineer_features(seeded_cache)
+        assert "feature engineering" in str(exc.value).lower()
+
+
+class TestMLFeatureNames:
+    def test_coefficients_use_display_feature_names(self):
+        df = pd.DataFrame({
+            "age": [20, 25, 30, 35, 40, 45, 50, 55],
+            "bmi": [18.5, 19.0, 21.2, 22.5, 24.0, 26.1, 28.3, 30.0],
+            "target": [80, 90, 110, 125, 140, 155, 170, 190],
+        })
+
+        result = train_model(
+            df=df,
+            task_type="regression",
+            target="target",
+            features=["age", "bmi"],
+            split_strategy="random",
+            test_size=0.25,
+            val_size=None,
+            time_column=None,
+            model_type="linear",
+            params={},
+        )
+
+        feature_names = [row["feature"] for row in result["coefficients"]]
+        assert feature_names == ["age", "bmi"]
+
+    def test_categorical_coefficients_use_readable_names(self):
+        df = pd.DataFrame({
+            "dept": ["A", "B", "A", "B", "C", "C", "A", "B"],
+            "target": [1.0, 2.0, 1.2, 2.1, 3.0, 3.1, 1.1, 2.2],
+        })
+
+        result = train_model(
+            df=df,
+            task_type="regression",
+            target="target",
+            features=["dept"],
+            split_strategy="random",
+            test_size=0.25,
+            val_size=None,
+            time_column=None,
+            model_type="ridge",
+            params={},
+        )
+
+        feature_names = [row["feature"] for row in result["coefficients"]]
+        assert "dept=A" in feature_names
+        assert all(not name.startswith("cat__") for name in feature_names)
+
+    def test_random_forest_regressor_returns_feature_importance(self):
+        df = pd.DataFrame({
+            "age": [20, 25, 30, 35, 40, 45, 50, 55, 60, 65],
+            "bmi": [18, 19, 20, 22, 24, 25, 26, 28, 29, 31],
+            "target": [80, 90, 100, 120, 135, 150, 165, 180, 195, 210],
+        })
+
+        result = train_model(
+            df=df,
+            task_type="regression",
+            target="target",
+            features=["age", "bmi"],
+            split_strategy="random",
+            test_size=0.2,
+            val_size=None,
+            time_column=None,
+            model_type="random_forest_regressor",
+            params={"n_estimators": 5, "max_depth": 3, "random_state": 1},
+        )
+
+        assert result["feature_importances"]
+        assert {row["feature"] for row in result["feature_importances"]} == {"age", "bmi"}
+
+    def test_decision_tree_classifier_with_params(self):
+        df = pd.DataFrame({
+            "x1": [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
+            "x2": [1, 2, 1, 2, 1, 2, 1, 2, 1, 2],
+            "target": ["a", "a", "a", "a", "b", "b", "b", "b", "b", "b"],
+        })
+
+        result = train_model(
+            df=df,
+            task_type="classification",
+            target="target",
+            features=["x1", "x2"],
+            split_strategy="random",
+            test_size=0.2,
+            val_size=None,
+            time_column=None,
+            model_type="decision_tree_classifier",
+            params={"max_depth": 2, "criterion": "gini"},
+        )
+
+        assert result["feature_importances"]
+        assert "accuracy" in result["metrics"]["test"]
+
+    def test_logistic_models_do_not_emit_penalty_warnings(self):
+        df = pd.DataFrame({
+            "x1": list(range(20)),
+            "x2": [v % 3 for v in range(20)],
+            "target": ["a"] * 10 + ["b"] * 10,
+        })
+
+        for model_type in ("logistic_l2", "logistic_l1", "logistic_elasticnet"):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                result = train_model(
+                    df=df,
+                    task_type="classification",
+                    target="target",
+                    features=["x1", "x2"],
+                    split_strategy="random",
+                    test_size=0.2,
+                    val_size=None,
+                    time_column=None,
+                    model_type=model_type,
+                    params={"max_iter": 2000, "l1_ratio": 0.5},
+                )
+
+            messages = [str(warning.message) for warning in caught]
+            assert "accuracy" in result["metrics"]["test"]
+            assert not any("penalty" in message and "deprecated" in message for message in messages)
+            assert not any("Inconsistent values" in message for message in messages)
+
+
+class TestDatabaseConfig:
+    def test_build_postgres_url_from_env(self, monkeypatch):
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.setenv("POSTGRES_HOST", "localhost")
+        monkeypatch.setenv("POSTGRES_PORT", "5432")
+        monkeypatch.setenv("POSTGRES_USER", "postgres")
+        monkeypatch.setenv("POSTGRES_PASSWORD", "123456")
+        monkeypatch.setenv("POSTGRES_DB", "dataflowbi")
+
+        url = build_database_url()
+
+        assert url.drivername == "postgresql+psycopg"
+        assert url.username == "postgres"
+        assert url.password == "123456"
+        assert url.host == "localhost"
+        assert url.port == 5432
+        assert url.database == "dataflowbi"
+
+    def test_database_url_override(self, monkeypatch):
+        value = "postgresql+psycopg://postgres:123456@localhost:5432/dataflowbi"
+        monkeypatch.setenv("DATABASE_URL", value)
+
+        assert build_database_url() == value
+
+
 class TestHistoryEndpoint:
     @patch("app.api.history.SessionLocal")
     def test_list_history_empty(self, mock_session, client):
@@ -304,6 +486,27 @@ class TestHistoryEndpoint:
         data = resp.json()
         assert data["total"] == 0
         assert data["records"] == []
+
+    @patch("app.api.history.SessionLocal")
+    def test_list_history_db_unavailable_degrades_to_empty(self, mock_session, client):
+        mock_db = MagicMock()
+        mock_db.query.side_effect = SQLAlchemyError("database down")
+        mock_session.return_value = mock_db
+
+        resp = client.get("/history")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"records": [], "total": 0}
+
+    @patch("app.api.history.SessionLocal")
+    def test_history_detail_db_unavailable_returns_503(self, mock_session, client):
+        mock_db = MagicMock()
+        mock_db.query.side_effect = SQLAlchemyError("database down")
+        mock_session.return_value = mock_db
+
+        resp = client.get("/history/1")
+
+        assert resp.status_code == 503
 
     @patch("app.api.history.SessionLocal")
     def test_get_history_detail_not_found(self, mock_session, client):

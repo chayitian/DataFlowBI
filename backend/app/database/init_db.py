@@ -1,3 +1,5 @@
+"""数据库启动初始化和轻量 schema 升级工具。"""
+
 import logging
 
 from sqlalchemy import inspect, text
@@ -16,11 +18,12 @@ UPLOAD_RECORDS_COLUMNS = {
     "comparison_json": "comparison_json JSON NULL",
     "imported_table": "imported_table VARCHAR(255) NULL",
     "import_status": "import_status VARCHAR(32) NULL",
-    "imported_at": "imported_at DATETIME NULL",
+    "imported_at": "imported_at TIMESTAMP NULL",
 }
 
 
 def _upgrade_upload_records_schema() -> None:
+    """补齐旧本地数据库可能缺少的列和索引。"""
     inspector = inspect(engine)
     if "upload_records" not in inspector.get_table_names():
         return
@@ -40,6 +43,7 @@ def _upgrade_upload_records_schema() -> None:
 
 
 def init_database():
+    """创建必要表，并执行非破坏性的 schema 增量补齐。"""
     UploadRecord.metadata.create_all(bind=engine)
     _upgrade_upload_records_schema()
 

@@ -2,6 +2,8 @@ import { useI18n } from "./useI18n";
 
 const { t } = useI18n();
 
+// 本模块把后端 report 分区转换为 ECharts option 对象。
+// useChart.js 负责决定调用哪个 builder；这里的函数应保持纯函数。
 export const MAX_CHART_FIELDS = 12;
 export const BAR_COLOR = "#f26b38";
 export const LINE_COLOR = "#1da1a7";
@@ -33,6 +35,7 @@ export const buildLineOption = (categories, values, unit, color) => ({
 });
 
 export const buildHistogramOption = (report, feature) => {
+  // report.histograms[field] 由后端 report_builder.py 预计算。
   const histogram = report?.histograms?.[feature];
   if (!histogram || !histogram.bins?.length || !histogram.counts?.length) return null;
   const labels = histogram.bins.slice(0, -1).map((v, i) => `${Number(v).toFixed(2)} - ${Number(histogram.bins[i + 1]).toFixed(2)}`);
@@ -49,6 +52,7 @@ export const buildHistogramOption = (report, feature) => {
 };
 
 export const buildNumericOption = (report, metricKey, type) => {
+  // 均值/最大值/最小值数值摘要图表共用的 builder。
   const summary = report?.numeric_summary || {};
   const entries = Object.entries(summary).slice(0, MAX_CHART_FIELDS);
   if (!entries.length) return null;
@@ -122,6 +126,7 @@ export const buildBoxplotOption = (report) => {
 };
 
 export const buildCorrelationOption = (report) => {
+  // ECharts 热力图需要扁平的 [x, y, value] 单元格。
   const corr = report?.correlation;
   if (!corr || !corr.fields?.length || !corr.matrix?.length) return null;
   const fields = corr.fields;
@@ -220,6 +225,7 @@ export const buildScatterOption = (report, xField, yField) => {
 };
 
 export const buildMissingHeatmapOption = (report) => {
+  // 只输出缺失单元格，保持图表 payload 较小。
   const hm = report?.missing_heatmap;
   if (!hm || !hm.data?.length) return null;
   const data = [];
@@ -263,6 +269,7 @@ export const buildOutliersOption = (report, field) => {
 };
 
 export const buildComparisonHistogramOption = (report, fields) => {
+  // 使用已计算好的直方图对比多个数值字段。
   if (!fields.length) return null;
   const colors = [BAR_COLOR, LINE_COLOR, "#9b59b6", "#2ecc71", "#f39c12", "#e74c3c", "#3498db", "#1abc9c"];
   const series = [];

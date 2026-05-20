@@ -1,3 +1,5 @@
+"""机器学习 API 接口。"""
+
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, HTTPException
@@ -10,6 +12,8 @@ router = APIRouter(prefix="/ml", tags=["ml"])
 
 
 class MLTrainRequest(BaseModel):
+    """前端提交的训练请求：在一个缓存数据集上训练一个 sklearn 模型。"""
+
     saved_name: str = Field(..., description="Cached dataset key")
     task_type: str = Field(..., description="regression | classification")
     target: str
@@ -25,6 +29,7 @@ class MLTrainRequest(BaseModel):
 
 @router.post("/train")
 def train(payload: MLTrainRequest = Body(...)):
+    # 后端把已解析文件保存在 DATA_CACHE 中，saved_name 是缓存键。
     dataframe = DATA_CACHE.get(payload.saved_name)
     if dataframe is None:
         raise HTTPException(status_code=404, detail="Session expired or file not found. Please re-upload.")

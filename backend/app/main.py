@@ -1,3 +1,9 @@
+"""FastAPI 应用工厂和进程级错误处理。
+
+这个文件是 uvicorn 使用的后端入口。路由、数据库启动、CORS 和统一错误响应
+都集中在这里，让功能模块只关注各自的业务逻辑。
+"""
+
 import logging
 from contextlib import asynccontextmanager
 
@@ -14,6 +20,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 
 
 def _error_response(status_code: int, detail: str, error_type: str) -> JSONResponse:
+    """返回前端可稳定处理的统一 JSON 错误结构。"""
     return JSONResponse(
         status_code=status_code,
         content={"error": True, "detail": detail, "type": error_type},
@@ -21,6 +28,7 @@ def _error_response(status_code: int, detail: str, error_type: str) -> JSONRespo
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    """把框架异常和未预期异常转换为稳定的 API 错误。"""
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
         return _error_response(exc.status_code, exc.detail, "http_error")
@@ -37,6 +45,8 @@ def register_error_handlers(app: FastAPI) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 持久化很有用，但上传/预览流程不强依赖数据库，因此数据库启动失败时
+    # 不应阻止应用启动。
     try:
         init_database()
     except Exception:
@@ -45,6 +55,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    """构建 FastAPI 应用；测试会导入它而不是依赖全局对象。"""
     app = FastAPI(title="DATAFLOWBI API", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(

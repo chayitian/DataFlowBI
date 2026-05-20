@@ -1,5 +1,6 @@
 <template>
   <div class="page">
+    <!-- 全局设置：语言和弹窗/抽屉展示模式。 -->
     <SettingsMenu
       :show="showSettingsMenu"
       :locale="locale"
@@ -11,6 +12,7 @@
     <button class="history-btn" title="History" @click="showHistory = true">
       &#128196;
     </button>
+    <!-- 首页上传区。解析完成后，这里也会展示清洗和特征工程入口。 -->
     <header class="hero">
       <div class="hero-text">
         <p class="eyebrow">{{ t("eyebrow") }}</p>
@@ -39,6 +41,13 @@
           >
             {{ t("cleanTitle") }}
           </button>
+          <button
+            class="primary-btn primary-btn--blue"
+            type="button"
+            @click="showFeatureEngineeringPanel = true"
+          >
+            {{ t("featureEngineeringTitle") }}
+          </button>
         </div>
         <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
       </div>
@@ -54,6 +63,7 @@
       />
     </header>
 
+    <!-- 后端 report_builder.py 生成的静态数据画像表。 -->
     <ReportSection
       v-if="showReportSection"
       :reportData="activeReport"
@@ -63,6 +73,7 @@
       :statsRows="reportStatsRows"
     />
 
+    <!-- 交互式图表面板；useChart.js 管理图表状态和 ECharts 渲染。 -->
     <section v-if="showChartSection" class="chart-section">
       <div class="chart-header">
         <h2>{{ t("chartTitle") }}</h2>
@@ -128,6 +139,7 @@
       </div>
     </section>
 
+    <!-- /ml/train 返回后展示机器学习结果。 -->
     <section v-if="hasParsed" class="ml-section">
       <div class="chart-header">
         <h2>{{ t("mlTitle") }}</h2>
@@ -139,130 +151,11 @@
             {{ t("mlOpen") }}
           </button>
         </div>
-        <div v-if="mlLoading" class="loading">{{ t("loading") }}</div>
-        <div v-else-if="mlError" class="error">{{ mlError }}</div>
-        <div v-else-if="!mlResult" class="empty-state">{{ t("mlEmpty") }}</div>
-        <div v-else class="ml-results">
-          <div class="ml-summary">
-            <div>{{ t("mlTaskType") }}: {{ mlResult.task_type }}</div>
-            <div>{{ t("mlModel") }}: {{ mlResult.model_type }}</div>
-            <div>{{ t("mlTarget") }}: {{ mlResult.target }}</div>
-            <div>{{ t("mlFeatureCount") }}: {{ mlResult.features?.length || 0 }}</div>
-            <div>{{ t("mlTrainSize") }}: {{ mlResult.split?.sizes?.train }}</div>
-            <div v-if="mlResult.split?.sizes?.val">{{ t("mlValSize") }}: {{ mlResult.split?.sizes?.val }}</div>
-            <div>{{ t("mlTestSize") }}: {{ mlResult.split?.sizes?.test }}</div>
-          </div>
-
-          <div class="ml-metrics">
-            <div class="selection-label">{{ t("mlMetrics") }}</div>
-            <table class="report-table">
-              <thead>
-                <tr>
-                  <th>{{ t("mlSplit") }}</th>
-                  <th>{{ t("mlMetricR2") }}</th>
-                  <th>{{ t("mlMetricMAE") }}</th>
-                  <th>{{ t("mlMetricRMSE") }}</th>
-                  <th>{{ t("mlMetricAcc") }}</th>
-                  <th>{{ t("mlMetricPrecision") }}</th>
-                  <th>{{ t("mlMetricRecall") }}</th>
-                  <th>{{ t("mlMetricF1") }}</th>
-                  <th>{{ t("mlMetricAUC") }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>train</td>
-                  <td>{{ formatMetric(mlResult.metrics?.train?.r2) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.train?.mae) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.train?.rmse) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.train?.accuracy) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.train?.precision) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.train?.recall) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.train?.f1) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.train?.roc_auc) }}</td>
-                </tr>
-                <tr v-if="hasValMetrics">
-                  <td>val</td>
-                  <td>{{ formatMetric(mlResult.metrics?.val?.r2) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.val?.mae) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.val?.rmse) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.val?.accuracy) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.val?.precision) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.val?.recall) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.val?.f1) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.val?.roc_auc) }}</td>
-                </tr>
-                <tr>
-                  <td>test</td>
-                  <td>{{ formatMetric(mlResult.metrics?.test?.r2) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.test?.mae) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.test?.rmse) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.test?.accuracy) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.test?.precision) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.test?.recall) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.test?.f1) }}</td>
-                  <td>{{ formatMetric(mlResult.metrics?.test?.roc_auc) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div v-if="mlResult.ols" class="ml-ols">
-            <div class="selection-label">{{ t("mlOlsTitle") }}</div>
-            <div class="ml-ols-summary">
-              <span>R2: {{ formatMetric(mlResult.ols.summary?.r2) }}</span>
-              <span>Adj R2: {{ formatMetric(mlResult.ols.summary?.adj_r2) }}</span>
-              <span>AIC: {{ formatMetric(mlResult.ols.summary?.aic) }}</span>
-              <span>BIC: {{ formatMetric(mlResult.ols.summary?.bic) }}</span>
-              <span>N: {{ mlResult.ols.summary?.nobs }}</span>
-            </div>
-            <div class="report-table-wrapper">
-              <table class="report-table">
-                <thead>
-                  <tr>
-                    <th>{{ t("mlFeature") }}</th>
-                    <th>Coef.</th>
-                    <th>Std.Err.</th>
-                    <th>t</th>
-                    <th>P>|t|</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="row in mlResult.ols.table" :key="row.feature">
-                    <td>{{ row.feature }}</td>
-                    <td>{{ formatMetric(row['Coef.']) }}</td>
-                    <td>{{ formatMetric(row['Std.Err.']) }}</td>
-                    <td>{{ formatMetric(row['t']) }}</td>
-                    <td>{{ formatMetric(row['P>|t|']) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div v-else class="ml-coef">
-            <div class="selection-label">{{ t("mlCoeffTitle") }}</div>
-            <div class="report-table-wrapper">
-              <table class="report-table">
-                <thead>
-                  <tr>
-                    <th>{{ t("mlFeature") }}</th>
-                    <th>{{ t("mlCoefficient") }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="row in mlResult.coefficients || []" :key="row.feature + (row.class ?? '')">
-                    <td>{{ row.feature }}</td>
-                    <td>{{ formatMetric(row.coef) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <MLResults :loading="mlLoading" :error="mlError" :result="mlResult" />
       </div>
     </section>
 
+    <!-- 下面的弹窗/抽屉组件由 script 部分的 refs 控制。 -->
     <SelectionDialog
       :show="showSelection"
       :selection="selection"
@@ -313,6 +206,15 @@
       @close="showCleanPanel = false"
       @cleaned="onCleaned"
     />
+    <FeatureEngineeringDialog
+      :show="showFeatureEngineeringPanel"
+      :fields="preview?.fields || []"
+      :filterInfo="preview?.filter_info"
+      :savedName="savedName"
+      :selectionMode="selectionMode"
+      @close="showFeatureEngineeringPanel = false"
+      @engineered="onFeatureEngineered"
+    />
     <HistoryPanel
       :show="showHistory"
       :selectionMode="selectionMode"
@@ -323,6 +225,8 @@
       :show="showMLDialog"
       :selectionMode="selectionMode"
       :fields="preview?.fields || []"
+      :originalFields="originalFeatureFields"
+      :engineeredFields="engineeredFeatureFields"
       :filterInfo="preview?.filter_info"
       @close="showMLDialog = false"
       @train="runMLTrain"
@@ -331,12 +235,14 @@
 </template>
 
 <script setup>
+// App.vue 负责组装整个页面。可复用状态放在 composables 中，本文件负责协调跨功能动作，
+// 例如上传 -> 图表重置、清洗/特征工程 -> 预览刷新、ML 训练 -> 结果展示。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "./composables/useI18n";
 import { useFileUpload } from "./composables/useFileUpload";
 import { useSelection } from "./composables/useSelection";
 import { useChart } from "./composables/useChart";
-import { exportReportDocx, exportReportExcel, exportReportPdf, exportReportPptx } from "./api/upload";
+import { useExport } from "./composables/useExport";
 import { trainModel } from "./api/ml";
 import SettingsMenu from "./components/SettingsMenu.vue";
 import PreviewCard from "./components/PreviewCard.vue";
@@ -349,13 +255,17 @@ import ChartOptionsPanel from "./components/ChartOptionsPanel.vue";
 import HistoryPanel from "./components/HistoryPanel.vue";
 import CleanPanel from "./components/CleanPanel.vue";
 import ExportDialog from "./components/ExportDialog.vue";
+import FeatureEngineeringDialog from "./components/FeatureEngineeringDialog.vue";
 import MachineLearningDialog from "./components/MachineLearningDialog.vue";
+import MLResults from "./components/MLResults.vue";
 
 const { locale, t, setLanguage } = useI18n();
 const showSettingsMenu = ref(false);
 const showHistory = ref(false);
 const selectionMode = ref("dialog");
 
+// 上传、预览和筛选的状态与动作。savedName 是后端缓存键，筛选、清洗、导出、
+// 特征工程和 ML 接口都会使用它。
 const {
   selectedFile, preview, isUploading, errorMessage, showAllFields, savedName,
   filteredData, filterNumericRanges, showFilterPanel, hasParsed, selectedFields,
@@ -366,6 +276,7 @@ const {
 
 let _syncChartSelection = null;
 
+// 控制解析后用户要展示哪些分区，以及当前报告启用哪些图表类别。
 const {
   selection, appliedSelection, chartConfigApplied, showChartSetup,
   tempChartTypes, appliedChartTypes, showSelection,
@@ -375,6 +286,7 @@ const {
   openChartSetup, closeChartSetup,
 } = useSelection({ runUpload, hasParsedRef: hasParsed, isUploadingRef: isUploading });
 
+// 图表状态有意从 App.vue 中拆出，因为 ECharts 选项和报告相关默认值是前端最密集的逻辑。
 const {
   chartCategory, chartType, chartFeature, chartEl, chartInstance,
   histogramBinCount, histogramNormalize, rebinData, groupAggregation, binningMethod,
@@ -388,22 +300,42 @@ const {
 
 _syncChartSelection = syncChartSelection;
 
+const {
+  handleExportDocx,
+  handleExportExcel,
+  handleExportPdf,
+  handleExportPptx,
+} = useExport({ savedName, preview, chartInstance, hasChartData, currentChartTitle, errorMessage });
+
 const showChartOptions = ref(true);
 const showCleanPanel = ref(false);
+const showFeatureEngineeringPanel = ref(false);
 const showExportPanel = ref(false);
 const showMLDialog = ref(false);
 const mlLoading = ref(false);
 const mlError = ref("");
 const mlResult = ref(null);
+const originalFields = ref([]);
+const engineeredFields = ref([]);
 
 const hasCharts = computed(
   () => showChartSection.value && analysisOptions.value.length > 0
 );
 
+const currentFields = computed(() => preview.value?.fields || []);
+// 这些列表让 ML 弹窗可以分开展示原始特征和生成特征。
+const originalFeatureFields = computed(() => originalFields.value.filter((field) => currentFields.value.includes(field)));
+const engineeredFeatureFields = computed(() => engineeredFields.value.filter((field) => currentFields.value.includes(field)));
+
+const uniqueFields = (fields) => Array.from(new Set(fields));
+
 const onHistorySelect = async (record) => {
+  // 加载历史记录会从磁盘缓存快照恢复预览状态。
   showHistory.value = false;
   try {
     await loadHistoryRecord(record.id);
+    originalFields.value = preview.value?.fields || [];
+    engineeredFields.value = [];
     showSelection.value = false;
     appliedSelection.value = {
       preview: true,
@@ -417,93 +349,39 @@ const onHistorySelect = async (record) => {
       _syncChartSelection();
     }
   } catch {
-    // error already set by loadHistoryRecord
-  }
-};
-
-const downloadBlob = (blob, filename) => {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-};
-
-const buildChartPayload = () => {
-  if (!chartInstance.value || !hasChartData.value) return [];
-  const dataUrl = chartInstance.value.getDataURL({
-    type: "png",
-    pixelRatio: 2,
-    backgroundColor: "#fff",
-  });
-  return [{ title: currentChartTitle.value || "Chart", data_url: dataUrl }];
-};
-
-const handleExportDocx = async () => {
-  if (!savedName.value) return;
-  try {
-    const blob = await exportReportDocx(
-      savedName.value,
-      preview.value?.filename || "report",
-      buildChartPayload()
-    );
-    downloadBlob(blob, `${preview.value?.filename || "report"}.docx`);
-  } catch (e) {
-    console.error("Word export failed:", e);
-    errorMessage.value = e?.response?.data?.detail || "Word export failed";
-  }
-};
-
-const handleExportExcel = async () => {
-  if (!savedName.value) return;
-  try {
-    const blob = await exportReportExcel(savedName.value, preview.value?.filename || "report");
-    downloadBlob(blob, `${preview.value?.filename || "report"}.xlsx`);
-  } catch (e) {
-    console.error("Excel export failed:", e);
-    errorMessage.value = e?.response?.data?.detail || "Excel export failed";
+    // 错误信息已由 loadHistoryRecord 设置。
   }
 };
 
 const onCleaned = (result) => {
+  // 清洗会返回新的 saved_name。更新 preview 后，后续动作会使用清洗后的快照，
+  // 而不是原始上传文件。
   preview.value = { ...preview.value, ...result };
   if (result?.saved_name) {
     savedName.value = result.saved_name;
   }
+  const fields = result?.fields || [];
+  originalFields.value = originalFields.value.filter((field) => fields.includes(field));
+  engineeredFields.value = engineeredFields.value.filter((field) => fields.includes(field));
   showCleanPanel.value = false;
 };
 
-const handleExportPdf = async () => {
-  if (!savedName.value) return;
-  try {
-    const blob = await exportReportPdf(
-      savedName.value,
-      preview.value?.filename || "report",
-      buildChartPayload()
-    );
-    downloadBlob(blob, `${preview.value?.filename || "report"}.pdf`);
-  } catch (e) {
-    console.error("PDF export failed:", e);
-    errorMessage.value = e?.response?.data?.detail || "PDF export failed";
+const onFeatureEngineered = (result) => {
+  // 单独记录生成列，让 ML 可以清晰展示特征分组。
+  const createdFields = result?.engineered_fields
+    || (result?.feature_engineering_log || []).flatMap((log) => log.created_fields || []);
+  if (!originalFields.value.length) {
+    originalFields.value = preview.value?.fields || [];
   }
-};
-
-const handleExportPptx = async () => {
-  if (!savedName.value) return;
-  try {
-    const blob = await exportReportPptx(
-      savedName.value,
-      preview.value?.filename || "report",
-      buildChartPayload()
-    );
-    downloadBlob(blob, `${preview.value?.filename || "report"}.pptx`);
-  } catch (e) {
-    console.error("PPT export failed:", e);
-    errorMessage.value = e?.response?.data?.detail || "PPT export failed";
+  preview.value = { ...preview.value, ...result };
+  if (result?.saved_name) {
+    savedName.value = result.saved_name;
   }
+  const fields = result?.fields || [];
+  originalFields.value = originalFields.value.filter((field) => fields.includes(field));
+  engineeredFields.value = uniqueFields([...engineeredFields.value, ...createdFields])
+    .filter((field) => fields.includes(field));
+  showFeatureEngineeringPanel.value = false;
 };
 
 const toggleChartOptions = () => {
@@ -517,6 +395,7 @@ const openMLDialog = () => {
 };
 
 const runMLTrain = async (config) => {
+  // 弹窗发出模型配置；这里补上 saved_name 并调用 API。
   if (!savedName.value) return;
   mlLoading.value = true;
   mlError.value = "";
@@ -534,16 +413,8 @@ const runMLTrain = async (config) => {
   }
 };
 
-const formatMetric = (value) => {
-  if (value === null || value === undefined) return "-";
-  const n = Number(value);
-  if (Number.isNaN(n)) return String(value);
-  return n.toFixed(4);
-};
-
-const hasValMetrics = computed(() => Boolean(mlResult.value?.metrics?.val));
-
 const confirmSelection = async () => {
+  // 用户确认要展示的分区后才开始上传。
   const normalized = {
     preview: Boolean(selection.value.preview),
     report: Boolean(selection.value.report),
@@ -555,6 +426,10 @@ const confirmSelection = async () => {
   showSelection.value = false;
   showChartOptions.value = false;
   await runUpload();
+  if (preview.value?.fields) {
+    originalFields.value = preview.value.fields;
+    engineeredFields.value = [];
+  }
   if (normalized.charts_enabled && !chartConfigApplied.value) {
     chartConfigApplied.value = true;
     _syncChartSelection();
@@ -562,6 +437,7 @@ const confirmSelection = async () => {
 };
 
 const confirmChartSetup = () => {
+  // 应用图表类别选择，并让 useChart 选择有效默认值。
   appliedChartTypes.value = { ...tempChartTypes.value };
   chartConfigApplied.value = true;
   showChartSetup.value = false;
@@ -570,6 +446,7 @@ const confirmChartSetup = () => {
 };
 
 watch(activeReport, () => {
+  // 报告变化可能让图表字段失效，因此渲染前先同步选择。
   syncChartSelection();
   nextTick(renderChart);
 });
@@ -594,6 +471,7 @@ watch(analysisOptions, () => { syncChartSelection(); });
 watch(locale, () => { nextTick(renderChart); });
 
 watch(showChartSection, (value) => {
+  // 图表分区隐藏时销毁 ECharts 实例，释放 canvas 内存。
   if (!value && chartInstance.value) {
     chartInstance.value.dispose();
     chartInstance.value = null;

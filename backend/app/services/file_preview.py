@@ -1,3 +1,12 @@
+"""上传解析、内存数据集缓存、筛选和清洗。
+
+核心生命周期：
+1. 上传文件会带 UUID 前缀复制到 backend/uploads。
+2. pandas 解析复制后的文件，并写入 DATA_CACHE 以支持交互操作。
+3. PostgreSQL 可用时，元数据会写入 upload_records。
+4. 清洗会创建新的快照文件，不会覆盖源文件。
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -24,10 +33,18 @@ ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
 
 logger = logging.getLogger(__name__)
 
+# 进程内缓存，按 saved_name 索引。它能让图表、清洗和 ML 更快，但不具备持久性；
+# 历史重载可以根据磁盘上的 cached_path 重新填充它。
 DATA_CACHE: dict[str, pd.DataFrame] = {}
 
 
+def _display_dtype(dtype: Any) -> str:
+    name = str(dtype)
+    return "object" if name in ("str", "string") else name
+
+
 def build_preview(file: UploadFile) -> dict:
+    """保存上传文件、解析并缓存，然后返回前端预览数据。"""
     if not file.filename:
         raise HTTPException(status_code=400, detail="File name is required.")
 
@@ -61,6 +78,7 @@ def build_preview(file: UploadFile) -> dict:
     imported_table = None
     import_status = None
     imported_at = None
+    # 可选 SQL 导入采用尽力而为策略；导入失败不应阻塞预览。
     if AUTO_IMPORT_DB:
         try:
             imported_table = build_table_name(dataset_id, version)
@@ -71,6 +89,7 @@ def build_preview(file: UploadFile) -> dict:
             import_status = "failed"
             logger.warning("Auto import failed: %s", exc)
 
+    # 历史持久化同样采用尽力而为策略，保证无数据库时应用仍可工作。
     db = SessionLocal()
     try:
         record = UploadRecord(
@@ -116,6 +135,7 @@ def build_preview(file: UploadFile) -> dict:
 
 
 def rebin_histogram(saved_name: str, field: str, bin_count: int, normalize: bool) -> dict:
+    """为已上传数据中的数值字段重新计算直方图分箱。"""
     dataframe = DATA_CACHE.get(saved_name)
     if dataframe is None:
         raise HTTPException(status_code=404, detail="Session expired or file not found. Please re-upload.")
@@ -154,6 +174,7 @@ def filter_data(
     numeric_ranges: Optional[Dict[str, List[float]]] = None,
     categorical_values: Optional[Dict[str, List[str]]] = None,
 ) -> dict:
+    """应用仅用于预览的筛选，不创建新的保存快照。"""
     dataframe = DATA_CACHE.get(saved_name)
     if dataframe is None:
         raise HTTPException(status_code=404, detail="Session expired or file not found. Please re-upload.")
@@ -186,16 +207,17 @@ def filter_data(
 
 
 def build_filter_info(dataframe: pd.DataFrame) -> dict:
+    """构建筛选、清洗和 ML 弹窗使用的列级元数据。"""
     info = {}
     for col in dataframe.columns:
-        entry = {"dtype": str(dataframe[col].dtype)}
+        entry = {"dtype": _display_dtype(dataframe[col].dtype)}
         series = dataframe[col].dropna()
         if pd.api.types.is_numeric_dtype(series):
             if not series.empty:
                 entry["min"] = _normalize_value(series.min())
                 entry["max"] = _normalize_value(series.max())
                 entry["mean"] = _normalize_value(series.mean())
-        elif series.dtype == "object":
+        elif entry["dtype"] == "object" or pd.api.types.is_string_dtype(series):
             unique = series.unique().tolist()[:50]
             entry["values"] = [_normalize_value(v) for v in unique]
         entry.update(_suggest_type(dataframe[col]))
@@ -204,6 +226,7 @@ def build_filter_info(dataframe: pd.DataFrame) -> dict:
 
 
 def _normalize_value(value: Any) -> Any:
+    """把 pandas/numpy 标量值转换为可 JSON 序列化的值。"""
     if pd.isna(value):
         return None
     if isinstance(value, pd.Timestamp):
@@ -226,6 +249,7 @@ def _is_integer_like(series: pd.Series) -> bool:
 
 
 def _suggest_type(series: pd.Series) -> dict:
+    """推断字段可能的语义类型，用于清洗建议。"""
     cleaned = series.dropna()
     if cleaned.empty:
         return {"suggested_type": None, "suggestion_confidence": 0.0}
@@ -255,6 +279,7 @@ def _suggest_type(series: pd.Series) -> dict:
 
 
 def _build_clean_summary(df: pd.DataFrame) -> dict:
+    """生成清洗或特征工程后的前后对比摘要。"""
     n_rows, n_cols = df.shape
     missing_rate_avg = float(df.isna().mean().mean()) if n_rows else 0.0
     quality = build_quality(df)
@@ -267,6 +292,7 @@ def _build_clean_summary(df: pd.DataFrame) -> dict:
 
 
 def _compute_file_hash(filepath: Path) -> str:
+    """计算缓存文件哈希，让历史记录能标识精确快照。"""
     sha256 = hashlib.sha256()
     with filepath.open("rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
@@ -275,6 +301,7 @@ def _compute_file_hash(filepath: Path) -> str:
 
 
 def _save_upload(file: UploadFile, suffix: str) -> Path:
+    """把原始上传文件复制到 backend/uploads，且不修改原文件。"""
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = Path(file.filename or "upload").name
     unique_name = f"{uuid.uuid4().hex}_{safe_name}"
@@ -288,6 +315,7 @@ def _save_upload(file: UploadFile, suffix: str) -> Path:
 
 
 def _save_dataframe_snapshot(dataframe: pd.DataFrame, original_filename: str) -> Path:
+    """把派生数据保存为新文件，而不是替换上传文件。"""
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     suffix = Path(original_filename).suffix.lower() or ".csv"
     stem = Path(original_filename).stem or "data"
@@ -303,6 +331,7 @@ def _save_dataframe_snapshot(dataframe: pd.DataFrame, original_filename: str) ->
 
 
 def reload_from_cache(cached_path: str, original_filename: str) -> dict:
+    """从磁盘把历史快照重新加载到 DATA_CACHE。"""
     file_path = Path(cached_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Cached file not found on disk.")
@@ -331,6 +360,7 @@ def reload_from_cache(cached_path: str, original_filename: str) -> dict:
 
 
 def _load_dataframe(file_path: Path, suffix: str) -> pd.DataFrame:
+    """把支持的表格文件格式读取为 pandas DataFrame。"""
     if suffix == ".csv":
         return pd.read_csv(file_path)
 
@@ -343,6 +373,11 @@ def clean_data(
     outlier_handling: Optional[Dict[str, Dict[str, Any]]] = None,
     type_conversions: Optional[Dict[str, str]] = None,
 ) -> dict:
+    """应用类型转换、缺失值处理和离群值处理。
+
+    清洗从缓存 DataFrame 的副本开始，并写入新的快照文件。
+    磁盘上的原始上传文件保持不变。
+    """
     dataframe = DATA_CACHE.get(saved_name)
     if dataframe is None:
         raise HTTPException(status_code=404, detail="Session expired or file not found. Please re-upload.")
@@ -370,6 +405,7 @@ def clean_data(
     before_summary = _build_clean_summary(df)
     cleaning_log: list[dict] = []
 
+    # 类型转换先执行，确保后续缺失值/离群值规则看到预期的数值或日期 dtype。
     if type_conversions:
         for field, target_type in type_conversions.items():
             if field not in df.columns:
@@ -396,6 +432,7 @@ def clean_data(
                     "detail": f"failed: {exc}",
                 })
 
+    # 缺失值规则由 CleanPanel.vue 按字段配置。
     if missing_handling:
         for field, config in missing_handling.items():
             if field not in df.columns:
@@ -441,6 +478,7 @@ def clean_data(
                     "detail": f"failed: {exc}",
                 })
 
+    # 离群值处理目前支持 IQR 围栏和 z-score 阈值。
     if outlier_handling:
         for field, config in outlier_handling.items():
             if field not in df.columns or not pd.api.types.is_numeric_dtype(df[field]):
@@ -502,6 +540,8 @@ def clean_data(
     cleaned_path = _save_dataframe_snapshot(df, original_filename)
     new_saved_name = cleaned_path.name
     DATA_CACHE[new_saved_name] = df
+    # 当前会话里让旧 key 也指向清洗后的数据，保证已有 UI 操作继续基于最新版本执行。
+    DATA_CACHE[saved_name] = df
     report = build_report(df)
     fields = [str(col) for col in df.columns.tolist()]
     filter_info = build_filter_info(df)

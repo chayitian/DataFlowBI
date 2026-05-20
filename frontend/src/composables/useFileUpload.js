@@ -2,6 +2,8 @@ import { ref, computed } from "vue";
 import { uploadDataset, filterData as filterApi, reloadHistory } from "../api/upload";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
+
+// 这些 ref 有意放在模块作用域：所有调用 useFileUpload 的组件共享同一份当前数据集状态。
 const selectedFile = ref(null);
 const preview = ref(null);
 const isUploading = ref(false);
@@ -17,6 +19,7 @@ const selectedFields = ref(null);
 const fieldLimit = 5;
 
 export function useFileUpload() {
+  // 派生字段把后端 preview/report payload 转成 Vue 模板更方便使用的结构。
   const reportData = computed(() => preview.value?.report || null);
   const numericSummary = computed(() => reportData.value?.numeric_summary || {});
   const sampleRows = computed(() => reportData.value?.sample_rows || []);
@@ -33,6 +36,7 @@ export function useFileUpload() {
   const activeReport = computed(() => filteredData.value?.report || reportData.value);
 
   const reportStatsRows = computed(() => {
+    // 把 dtype、缺失情况和数值统计合并成适合表格展示的数组。
     if (!reportData.value) return [];
     const dtypes = reportData.value.dtypes || {};
     const missing = reportData.value.missing || {};
@@ -54,6 +58,7 @@ export function useFileUpload() {
   const toggleFields = () => { showAllFields.value = !showAllFields.value; };
 
   const onFileChange = (event) => {
+    // 选择新文件会让之前的预览、筛选和历史加载状态全部失效。
     const [file] = event.target.files || [];
     selectedFile.value = file || null;
     preview.value = null;
@@ -69,6 +74,7 @@ export function useFileUpload() {
   };
 
   const runUpload = async (onError) => {
+    // 上传接口会在一次响应中返回 saved_name、fields、report 和 filter_info。
     if (!selectedFile.value) return;
     if (selectedFile.value.size > MAX_FILE_SIZE) {
       const maxMb = MAX_FILE_SIZE / (1024 * 1024);
@@ -94,6 +100,7 @@ export function useFileUpload() {
   };
 
   const initFilterInfo = () => {
+    // 筛选初始状态为未筛选，并默认选中全部字段。
     const info = preview.value?.filter_info;
     if (!info) return;
     selectedFields.value = preview.value?.fields || null;
@@ -102,6 +109,7 @@ export function useFileUpload() {
   };
 
   const applyFilter = async () => {
+    // 筛选不会创建新的后端快照，只改变当前 UI 中图表/表格使用的 report。
     if (!savedName.value) return;
     const includeFields = selectedFields.value?.length ? selectedFields.value : null;
     try {
@@ -118,6 +126,7 @@ export function useFileUpload() {
   };
 
   const loadHistoryRecord = async (recordId) => {
+    // 历史重载会解析缓存文件，并在后端重新填充 DATA_CACHE。
     isUploading.value = true;
     errorMessage.value = "";
     try {

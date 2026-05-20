@@ -13,5 +13,5 @@ DataFlowBI 是一个面向 CSV/XLSX 的数据分析平台，提供上传解析�
 
 ## 混合持久化
 
-- 默认：文件版本化（uploads 目录）+ 元数据入库（MySQL）
-- 可选：启用自动入库，将数据版本写入 MySQL 表
+- 默认：文件版本化（uploads 目录）+ 元数据入库（PostgreSQL，可选）
+- 可选：启用自动入库，将数据版本写入 PostgreSQL 表

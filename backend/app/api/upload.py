@@ -1,3 +1,5 @@
+"""上传接口：校验请求大小，然后把解析工作交给 service 层。"""
+
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
 from app.config import MAX_FILE_SIZE
@@ -8,6 +10,7 @@ router = APIRouter()
 
 @router.post("/upload")
 def upload_file(file: UploadFile = File(...), request: Request = None):
+    # 在 pandas 把文件解析进内存前，先拒绝过大的上传请求。
     content_length = request.headers.get("content-length")
     if content_length and int(content_length) > MAX_FILE_SIZE:
         max_mb = MAX_FILE_SIZE // (1024 * 1024)

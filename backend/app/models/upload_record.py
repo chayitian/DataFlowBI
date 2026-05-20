@@ -1,3 +1,5 @@
+"""持久化和历史记录层使用的 SQLAlchemy 模型。"""
+
 from sqlalchemy import Column, DateTime, Integer, JSON, String, func
 from sqlalchemy.orm import declarative_base
 
@@ -5,6 +7,13 @@ Base = declarative_base()
 
 
 class UploadRecord(Base):
+    """每个数据集快照对应一行记录。
+
+    原始上传、清洗后数据集和特征工程后数据集都会作为同一个 dataset_id 的
+    不同版本存储在这里。cached_path 指向 backend/uploads 中的文件；
+    imported_table 可选地指向 PostgreSQL 中的数据表。
+    """
+
     __tablename__ = "upload_records"
 
     id = Column(Integer, primary_key=True, autoincrement=True)

@@ -14,6 +14,7 @@ const { t } = useI18n();
 
 let echartsPromise = null;
 const getECharts = () => {
+  // ECharts 体积较大，因此首次渲染图表时才懒加载。
   if (!echartsPromise) echartsPromise = import("echarts");
   return echartsPromise;
 };
@@ -39,6 +40,8 @@ const selectedComparisonFields = ref([]);
 export function useChart(opts = {}) {
   const { activeReport, savedName } = opts;
 
+  // 这些 computed 列表表示当前报告实际支持哪些图表类型。
+  // 选项面板使用它们避免出现空选择。
   const histogramFeatures = computed(() => Object.keys(activeReport?.value?.histograms || {}));
   const frequencyFields = computed(() => Object.keys(activeReport?.value?.frequencies || {}));
   const paretoFields = computed(() => Object.keys(activeReport?.value?.pareto || {}));
@@ -51,6 +54,7 @@ export function useChart(opts = {}) {
   const outlierFields = computed(() => Object.keys(activeReport?.value?.outliers || {}));
 
   const buildChartOption = (report, category, type, feature) => {
+    // 把选中的分析类别路由到对应的 ECharts option builder。
     if (!report || !category) return null;
     if (category === "missing_rate") return buildMissingRateOption(report, type);
     if (category === "feature_distribution") {
@@ -81,6 +85,7 @@ export function useChart(opts = {}) {
   };
 
   const chartOption = computed(() => {
+    // 显式读取这些 ref，确保图表控制项变化时 Vue 会重新计算。
     rebinData.value; groupAggregation.value; binningMethod.value;
     scatterXField.value; scatterYField.value; timeseriesPeriod.value;
     comparisonMode.value; selectedComparisonFields.value;
@@ -111,6 +116,7 @@ export function useChart(opts = {}) {
   });
 
   const renderChart = async () => {
+    // ECharts 是动态加载的，因此渲染流程是异步的。
     if (isRendering) return;
     isRendering = true;
     try {
@@ -132,6 +138,7 @@ export function useChart(opts = {}) {
   const resizeChart = () => { if (chartInstance.value) chartInstance.value.resize(); };
 
   const syncChartSelection = () => {
+    // 新报告到达时，如果现有选择仍有效就保留，否则选择第一个有效类别/字段。
     if (!opts.analysisOptions?.value?.length) {
       chartCategory.value = null; chartType.value = "bar"; chartFeature.value = null;
       return;
@@ -186,6 +193,7 @@ export function useChart(opts = {}) {
   };
 
   const rebin = async () => {
+    // 重新分箱会要求后端基于原始缓存数据重新计算直方图分箱。
     if (!savedName?.value || !chartFeature.value || chartCategory.value !== "feature_distribution") return;
     try {
       rebinData.value = await rebinApi(savedName.value, chartFeature.value, histogramBinCount.value, histogramNormalize.value);
@@ -193,6 +201,7 @@ export function useChart(opts = {}) {
   };
 
   const downloadChart = (format) => {
+    // 直接在浏览器下载当前渲染的 ECharts canvas/SVG。
     if (!chartInstance.value) return;
     const url = chartInstance.value.getDataURL({ type: format === "svg" ? "svg" : "png", pixelRatio: 2, backgroundColor: "#fff" });
     const link = document.createElement("a");

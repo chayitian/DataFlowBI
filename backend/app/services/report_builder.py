@@ -1,3 +1,9 @@
+"""生成上传、筛选和清洗操作返回的分析报告。
+
+前端表格、图表选项、数据质量和导出文件都依赖这个 report 结构。
+每个 _build_* 辅助函数生成一个独立分区，便于新增分析面板时不改上传或清洗逻辑。
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -6,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 
+# 限制返回规模，避免大文件上传后 API 响应和图表渲染变慢。
 REPORT_SAMPLE_SIZE = 5
 HISTOGRAM_BIN_COUNT = 8
 HISTOGRAM_FIELD_LIMIT = 8
@@ -19,8 +26,23 @@ OUTLIER_MAX_SHOW = 30
 TIMESERIES_DETECT_FIELDS = 5
 
 
+def _display_dtype(dtype: Any) -> str:
+    name = str(dtype)
+    return "object" if name in ("str", "string") else name
+
+
+def _categorical_columns(dataframe: pd.DataFrame) -> list:
+    """显式识别分类/字符串列，避免 pandas 未来版本的 object dtype 警告。"""
+    return [
+        col
+        for col in dataframe.columns
+        if pd.api.types.is_object_dtype(dataframe[col]) or pd.api.types.is_string_dtype(dataframe[col])
+    ]
+
+
 def build_report(dataframe: pd.DataFrame) -> dict:
-    dtypes = {col: str(dtype) for col, dtype in dataframe.dtypes.items()}
+    """创建前端消费的所有报告分区。"""
+    dtypes = {col: _display_dtype(dtype) for col, dtype in dataframe.dtypes.items()}
 
     missing = dataframe.isna().sum()
     missing_rate = (missing / len(dataframe)) if len(dataframe) > 0 else missing
@@ -64,6 +86,7 @@ def build_report(dataframe: pd.DataFrame) -> dict:
 
 
 def build_quality(dataframe: pd.DataFrame) -> dict:
+    """根据缺失率和简单数值离群率为每个字段打分。"""
     n_rows = len(dataframe)
     if dataframe.empty:
         fields = {
@@ -110,6 +133,7 @@ def build_quality(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_numeric_summary(dataframe: pd.DataFrame) -> dict:
+    """生成数值列的基础描述统计。"""
     numeric_df = dataframe.select_dtypes(include="number")
     if numeric_df.empty:
         return {}
@@ -130,6 +154,7 @@ def _build_numeric_summary(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_sample_rows(dataframe: pd.DataFrame) -> list[dict[str, Any]]:
+    """生成小规模表格预览，并把空值类值规范化为 JSON 友好格式。"""
     sample = dataframe.head(REPORT_SAMPLE_SIZE)
     sample = sample.where(pd.notnull(sample), None)
     records = sample.to_dict(orient="records")
@@ -142,6 +167,7 @@ def _build_sample_rows(dataframe: pd.DataFrame) -> list[dict[str, Any]]:
 
 
 def _build_histograms(dataframe: pd.DataFrame) -> dict:
+    """为数值分布图预计算紧凑直方图数据。"""
     numeric_df = dataframe.select_dtypes(include="number")
     if numeric_df.empty:
         return {}
@@ -165,7 +191,8 @@ def _build_histograms(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_frequencies(dataframe: pd.DataFrame) -> dict:
-    categorical_cols = dataframe.select_dtypes(include="object").columns
+    """生成分类频次图使用的高频值。"""
+    categorical_cols = _categorical_columns(dataframe)
     frequencies = {}
 
     for col in categorical_cols:
@@ -182,6 +209,7 @@ def _build_frequencies(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_pareto(dataframe: pd.DataFrame) -> dict:
+    """生成最大数值的累计贡献度数据。"""
     numeric_df = dataframe.select_dtypes(include="number")
     pareto = {}
 
@@ -206,6 +234,7 @@ def _build_pareto(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_boxplot(dataframe: pd.DataFrame) -> dict:
+    """生成箱线图所需的四分位数、围栏和离群样本。"""
     numeric_df = dataframe.select_dtypes(include="number")
     boxplot = {}
 
@@ -239,6 +268,7 @@ def _build_boxplot(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_correlation(dataframe: pd.DataFrame) -> dict:
+    """生成热力图渲染所需的数值相关性矩阵。"""
     numeric_df = dataframe.select_dtypes(include="number")
     if numeric_df.empty:
         return {"fields": [], "matrix": []}
@@ -253,7 +283,8 @@ def _build_correlation(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_group_stats(dataframe: pd.DataFrame) -> dict:
-    categorical_cols = dataframe.select_dtypes(include="object").columns
+    """按低基数分类字段聚合数值字段。"""
+    categorical_cols = _categorical_columns(dataframe)
     numeric_cols = dataframe.select_dtypes(include="number").columns
 
     result = {
@@ -293,6 +324,7 @@ def _build_group_stats(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_binning(dataframe: pd.DataFrame) -> dict:
+    """计算数值字段的等宽和等频分箱。"""
     numeric_df = dataframe.select_dtypes(include="number")
     binning = {}
 
@@ -335,6 +367,7 @@ def _build_binning(dataframe: pd.DataFrame) -> dict:
 
 
 def _smooth_kde(values: np.ndarray, bins: int, sigma: float = 1.0) -> tuple:
+    """小提琴图使用的轻量密度平滑。"""
     hist, edges = np.histogram(values, bins=bins, density=True)
     kernel = np.exp(-np.linspace(-2, 2, max(3, int(bins * 0.2))) ** 2 / (2 * sigma ** 2))
     kernel = kernel / kernel.sum()
@@ -344,6 +377,7 @@ def _smooth_kde(values: np.ndarray, bins: int, sigma: float = 1.0) -> tuple:
 
 
 def _build_violin(dataframe: pd.DataFrame) -> dict:
+    """为数值字段生成近似小提琴图密度数据。"""
     numeric_df = dataframe.select_dtypes(include="number")
     violin = {}
 
@@ -367,6 +401,7 @@ def _build_violin(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_scatter_matrix(dataframe: pd.DataFrame) -> dict:
+    """为散点图采样数值行，避免返回过大的 payload。"""
     numeric_df = dataframe.select_dtypes(include="number").dropna(how="all")
     if numeric_df.empty:
         return {"fields": [], "data": []}
@@ -386,6 +421,7 @@ def _build_scatter_matrix(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_missing_heatmap(dataframe: pd.DataFrame) -> dict:
+    """生成布尔缺失矩阵；大数据集会按行采样。"""
     fields = [str(c) for c in dataframe.columns]
     n_rows = len(dataframe)
     step = max(1, n_rows // HEATMAP_SAMPLE_ROWS)
@@ -406,6 +442,7 @@ def _build_missing_heatmap(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_timeseries(dataframe: pd.DataFrame) -> dict:
+    """检测日期类字段，并按时间周期聚合行数。"""
     dataframe = dataframe.copy()
     datetime_cols = dataframe.select_dtypes(include=["datetime64"]).columns
     if not len(datetime_cols):
@@ -426,7 +463,6 @@ def _build_timeseries(dataframe: pd.DataFrame) -> dict:
         if series.empty:
             continue
 
-        base = dataframe.index if col not in dataframe.columns else dataframe.index
         temp = pd.DataFrame({"date": series})
         daily = temp.set_index("date").resample("D").size()
         monthly = temp.set_index("date").resample("ME").size()
@@ -452,6 +488,7 @@ def _build_timeseries(dataframe: pd.DataFrame) -> dict:
 
 
 def _build_outliers(dataframe: pd.DataFrame) -> dict:
+    """生成数值字段的 IQR 和 z-score 离群值摘要。"""
     numeric_df = dataframe.select_dtypes(include="number")
     result = {}
 
@@ -495,6 +532,7 @@ def _build_outliers(dataframe: pd.DataFrame) -> dict:
 
 
 def _normalize_value(value: Any) -> Any:
+    """把 pandas/numpy 值转换成 JSON 安全的 Python 值。"""
     if pd.isna(value):
         return None
 

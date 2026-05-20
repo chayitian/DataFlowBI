@@ -1,9 +1,14 @@
+"""基于 upload_records 表的历史记录接口。
+
+当 PostgreSQL 不可用时，历史列表允许降级为空列表，保证 UI 仍能加载。
+详情、重载和导入接口必须依赖数据库记录，因此数据库失败时返回 503。
+"""
+
 from datetime import datetime
 from pathlib import Path
 
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database.db import SessionLocal
@@ -16,7 +21,16 @@ from app.services.db_import import build_table_name, import_dataframe
 router = APIRouter(tags=["history"])
 
 
+def _database_unavailable() -> HTTPException:
+    """构造带有用户可执行提示的数据库故障响应。"""
+    return HTTPException(
+        status_code=503,
+        detail="Database unavailable. Start PostgreSQL and verify POSTGRES_* or DATABASE_URL settings.",
+    )
+
+
 def get_db():
+    """FastAPI 依赖：为每个请求创建一个 SQLAlchemy session。"""
     db = SessionLocal()
     try:
         yield db
@@ -24,45 +38,8 @@ def get_db():
         db.close()
 
 
-@router.get("/history", response_model=UploadRecordListResponse)
-def list_history(limit: int = 20, offset: int = 0, db: Session = Depends(get_db)):
-    total = db.query(UploadRecord).count()
-    records = (
-        db.query(UploadRecord)
-        .order_by(UploadRecord.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-    return UploadRecordListResponse(
-        total=total,
-        records=[
-            UploadRecordResponse(
-                id=r.id,
-                dataset_id=r.dataset_id,
-                version=r.version,
-                parent_id=r.parent_id,
-                tag=r.tag,
-                filename=r.filename,
-                original_filename=r.original_filename,
-                file_size=r.file_size,
-                row_count=r.row_count,
-                column_count=r.column_count,
-                columns=r.columns_json,
-                imported_table=r.imported_table,
-                import_status=r.import_status,
-                created_at=r.created_at,
-            )
-            for r in records
-        ],
-    )
-
-
-@router.get("/history/{record_id}", response_model=UploadRecordResponse)
-def get_history_detail(record_id: int, db: Session = Depends(get_db)):
-    record = db.query(UploadRecord).filter(UploadRecord.id == record_id).first()
-    if not record:
-        raise HTTPException(status_code=404, detail="Record not found")
+def _to_upload_record_response(record: UploadRecord) -> UploadRecordResponse:
+    """把数据库模型转换为历史接口响应模型。"""
     return UploadRecordResponse(
         id=record.id,
         dataset_id=record.dataset_id,
@@ -81,9 +58,49 @@ def get_history_detail(record_id: int, db: Session = Depends(get_db)):
     )
 
 
+def _to_upload_record_list(records: list[UploadRecord], total: int) -> UploadRecordListResponse:
+    """构造历史列表响应，避免多个接口重复字段映射。"""
+    return UploadRecordListResponse(
+        total=total,
+        records=[_to_upload_record_response(record) for record in records],
+    )
+
+
+@router.get("/history", response_model=UploadRecordListResponse)
+def list_history(limit: int = 20, offset: int = 0, db: Session = Depends(get_db)):
+    # 非关键接口：PostgreSQL 不可用时返回空列表。
+    try:
+        total = db.query(UploadRecord).count()
+        records = (
+            db.query(UploadRecord)
+            .order_by(UploadRecord.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+    except SQLAlchemyError:
+        return UploadRecordListResponse(total=0, records=[])
+    return _to_upload_record_list(records, total)
+
+
+@router.get("/history/{record_id}", response_model=UploadRecordResponse)
+def get_history_detail(record_id: int, db: Session = Depends(get_db)):
+    try:
+        record = db.query(UploadRecord).filter(UploadRecord.id == record_id).first()
+    except SQLAlchemyError:
+        raise _database_unavailable()
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    return _to_upload_record_response(record)
+
+
 @router.post("/history/{record_id}/reload")
 def reload_record(record_id: int, db: Session = Depends(get_db)):
-    record = db.query(UploadRecord).filter(UploadRecord.id == record_id).first()
+    # 重载也会回填 DATA_CACHE，让图表、清洗和 ML 可以继续使用。
+    try:
+        record = db.query(UploadRecord).filter(UploadRecord.id == record_id).first()
+    except SQLAlchemyError:
+        raise _database_unavailable()
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
     data = reload_from_cache(record.cached_path, record.original_filename)
@@ -95,38 +112,23 @@ def reload_record(record_id: int, db: Session = Depends(get_db)):
 
 @router.get("/history/{record_id}/versions", response_model=UploadRecordListResponse)
 def list_versions(record_id: int, db: Session = Depends(get_db)):
-    record = db.query(UploadRecord).filter(UploadRecord.id == record_id).first()
+    try:
+        record = db.query(UploadRecord).filter(UploadRecord.id == record_id).first()
+    except SQLAlchemyError:
+        raise _database_unavailable()
     if not record or not record.dataset_id:
         raise HTTPException(status_code=404, detail="Record not found")
 
-    records = (
-        db.query(UploadRecord)
-        .filter(UploadRecord.dataset_id == record.dataset_id)
-        .order_by(UploadRecord.version.desc())
-        .all()
-    )
-    return UploadRecordListResponse(
-        total=len(records),
-        records=[
-            UploadRecordResponse(
-                id=r.id,
-                dataset_id=r.dataset_id,
-                version=r.version,
-                parent_id=r.parent_id,
-                tag=r.tag,
-                filename=r.filename,
-                original_filename=r.original_filename,
-                file_size=r.file_size,
-                row_count=r.row_count,
-                column_count=r.column_count,
-                columns=r.columns_json,
-                imported_table=r.imported_table,
-                import_status=r.import_status,
-                created_at=r.created_at,
-            )
-            for r in records
-        ],
-    )
+    try:
+        records = (
+            db.query(UploadRecord)
+            .filter(UploadRecord.dataset_id == record.dataset_id)
+            .order_by(UploadRecord.version.desc())
+            .all()
+        )
+    except SQLAlchemyError:
+        raise _database_unavailable()
+    return _to_upload_record_list(records, len(records))
 
 
 @router.get("/history/compare")
@@ -135,8 +137,12 @@ def compare_versions(
     to_id: int = Query(...),
     db: Session = Depends(get_db),
 ):
-    from_record = db.query(UploadRecord).filter(UploadRecord.id == from_id).first()
-    to_record = db.query(UploadRecord).filter(UploadRecord.id == to_id).first()
+    # 版本对比使用磁盘上的缓存文件，不使用已导入的 SQL 表。
+    try:
+        from_record = db.query(UploadRecord).filter(UploadRecord.id == from_id).first()
+        to_record = db.query(UploadRecord).filter(UploadRecord.id == to_id).first()
+    except SQLAlchemyError:
+        raise _database_unavailable()
     if not from_record or not to_record:
         raise HTTPException(status_code=404, detail="Record not found")
 
@@ -159,7 +165,11 @@ def compare_versions(
 
 @router.post("/history/{record_id}/import")
 def import_history_record(record_id: int, db: Session = Depends(get_db)):
-    record = db.query(UploadRecord).filter(UploadRecord.id == record_id).first()
+    # 手动导入允许用户把已有缓存快照写入 PostgreSQL。
+    try:
+        record = db.query(UploadRecord).filter(UploadRecord.id == record_id).first()
+    except SQLAlchemyError:
+        raise _database_unavailable()
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
 

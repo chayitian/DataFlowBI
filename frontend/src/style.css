@@ -299,6 +299,14 @@ body::after {
   color: var(--ink);
 }
 
+.preview-filename {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .fields {
   display: flex;
   flex-wrap: wrap;
@@ -536,6 +544,26 @@ body::after {
   gap: 8px;
 }
 
+.ml-feature-section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(16, 42, 67, 0.08);
+  border-radius: 14px;
+  background: rgba(16, 42, 67, 0.03);
+}
+
+.ml-feature-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+}
+
 .ml-split-row {
   display: flex;
   flex-wrap: wrap;
@@ -563,6 +591,37 @@ body::after {
 .ml-params input {
   margin-left: 8px;
   width: 90px;
+}
+
+.ml-params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+
+.ml-params-grid label,
+.ml-advanced-params label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ml-params-grid input,
+.ml-params-grid select,
+.ml-advanced-params textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+  background: #fff;
+}
+
+.ml-advanced-params {
+  margin-top: 12px;
 }
 
 .chart-toolbar {

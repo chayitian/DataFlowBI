@@ -4,7 +4,7 @@
     <div class="preview-grid">
       <div class="preview-item">
         <span>{{ t("filename") }}</span>
-        <strong>{{ preview.filename }}</strong>
+        <strong class="preview-filename" :title="preview.filename">{{ preview.filename }}</strong>
       </div>
       <div class="preview-item">
         <span>{{ t("rows") }}</span>

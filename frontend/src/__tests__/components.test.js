@@ -6,6 +6,10 @@ import SettingsMenu from "../components/SettingsMenu.vue";
 import PreviewCard from "../components/PreviewCard.vue";
 import ReportSection from "../components/ReportSection.vue";
 import FilterPanel from "../components/FilterPanel.vue";
+import CleanPanel from "../components/CleanPanel.vue";
+import FeatureEngineeringDialog from "../components/FeatureEngineeringDialog.vue";
+import MachineLearningDialog from "../components/MachineLearningDialog.vue";
+import MLResults from "../components/MLResults.vue";
 import SelectionDialog from "../components/SelectionDialog.vue";
 import ChartSetupDialog from "../components/ChartSetupDialog.vue";
 import ChartToolbar from "../components/ChartToolbar.vue";
@@ -61,6 +65,22 @@ describe("PreviewCard", () => {
     expect(wrapper.text()).toContain("test.csv");
     expect(wrapper.text()).toContain("100");
     expect(wrapper.text()).toContain("5");
+  });
+
+  it("adds title and class for long filename display", () => {
+    const longName = "very-long-file-name-that-should-not-overflow-preview-summary-card.csv";
+    const wrapper = mount(PreviewCard, {
+      props: {
+        preview: { ...mockPreview, filename: longName },
+        showAllFields: false,
+        totalFields: 0,
+        visibleFields: [],
+        hasMoreFields: false,
+      },
+    });
+    const filename = wrapper.find(".preview-filename");
+    expect(filename.exists()).toBe(true);
+    expect(filename.attributes("title")).toBe(longName);
   });
 
   it("shows field chips when fields exist", () => {
@@ -249,6 +269,179 @@ describe("FilterPanel", () => {
     });
     wrapper.find(".selection-overlay").trigger("click");
     expect(wrapper.emitted("close")).toBeTruthy();
+  });
+});
+
+describe("CleanPanel", () => {
+  const props = {
+    show: true,
+    fields: ["age", "name"],
+    filterInfo: {
+      age: { dtype: "float64" },
+      name: { dtype: "object" },
+    },
+    savedName: "test_session",
+    quality: {},
+    selectionMode: "dialog",
+  };
+
+  it("renders three cleaning section tabs", () => {
+    const wrapper = mount(CleanPanel, { props });
+    const tabs = wrapper.findAll(".clean-section-tab");
+    expect(tabs).toHaveLength(3);
+    expect(wrapper.text()).toContain("缺失值处理");
+    expect(wrapper.text()).toContain("离群值处理");
+    expect(wrapper.text()).toContain("字段类型转换");
+  });
+
+  it("switches visible cleaning section", async () => {
+    const wrapper = mount(CleanPanel, { props });
+    const tabs = wrapper.findAll(".clean-section-tab");
+    await tabs[1].trigger("click");
+    expect(wrapper.text()).toContain("IQR 法");
+  });
+});
+
+describe("FeatureEngineeringDialog", () => {
+  const props = {
+    show: true,
+    fields: ["age", "dept", "start_date"],
+    filterInfo: {
+      age: { dtype: "float64" },
+      dept: { dtype: "object" },
+      start_date: { dtype: "object", suggested_type: "datetime" },
+    },
+    savedName: "test_session",
+    selectionMode: "dialog",
+  };
+
+  it("renders feature engineering options", () => {
+    const wrapper = mount(FeatureEngineeringDialog, { props });
+    expect(wrapper.text()).toContain("特征工程");
+    expect(wrapper.text()).toContain("数值特征变换");
+    expect(wrapper.text()).toContain("类别特征编码");
+    expect(wrapper.text()).toContain("日期特征拆分");
+  });
+
+  it("disables apply until an operation is selected", () => {
+    const wrapper = mount(FeatureEngineeringDialog, { props });
+    const applyButton = wrapper.find(".selection-footer .primary-btn");
+    expect(applyButton.attributes("disabled")).toBeDefined();
+  });
+
+  it("can bulk apply numeric transforms", async () => {
+    const wrapper = mount(FeatureEngineeringDialog, { props });
+    const buttons = wrapper.findAll(".feature-engineering-actions .ghost-button");
+    await buttons[0].trigger("click");
+    const select = wrapper.find("select.clean-select");
+    expect(select.element.value).toBe("standardize");
+  });
+
+  it("can bulk select categorical fields", async () => {
+    const wrapper = mount(FeatureEngineeringDialog, { props });
+    const categoricalAction = wrapper.findAll(".feature-engineering-actions")[1];
+    await categoricalAction.find(".ghost-button").trigger("click");
+    const checked = wrapper.findAll('input[type="checkbox"]:checked');
+    expect(checked.length).toBeGreaterThan(0);
+  });
+});
+
+describe("MachineLearningDialog", () => {
+  const props = {
+    show: true,
+    selectionMode: "dialog",
+    fields: ["age", "salary", "age_standardized", "dept_Engineering", "target"],
+    originalFields: ["age", "salary", "target"],
+    engineeredFields: ["age_standardized", "dept_Engineering"],
+    filterInfo: {},
+  };
+
+  it("does not enable validation by default", () => {
+    const wrapper = mount(MachineLearningDialog, { props });
+    const validationCheckbox = wrapper.findAll('input[type="checkbox"]')
+      .find((input) => input.element.value === "on");
+    expect(validationCheckbox.element.checked).toBe(false);
+    expect(wrapper.text()).not.toContain("验证集比例");
+  });
+
+  it("separates original and engineered features", () => {
+    const wrapper = mount(MachineLearningDialog, { props });
+    expect(wrapper.text()).toContain("原始特征");
+    expect(wrapper.text()).toContain("特征工程生成特征");
+    expect(wrapper.text()).toContain("age_standardized");
+  });
+});
+
+describe("MLResults", () => {
+  it("shows only regression metrics for regression tasks", () => {
+    const wrapper = mount(MLResults, {
+      props: {
+        loading: false,
+        error: "",
+        result: {
+          task_type: "regression",
+          model_type: "linear",
+          target: "y",
+          features: ["x"],
+          split: { sizes: { train: 8, test: 2 } },
+          metrics: {
+            train: { r2: 0.9, mae: 1, rmse: 2 },
+            test: { r2: 0.8, mae: 1.5, rmse: 2.5 },
+          },
+        },
+      },
+    });
+    expect(wrapper.text()).toContain("R2");
+    expect(wrapper.text()).toContain("MAE");
+    expect(wrapper.text()).toContain("RMSE");
+    expect(wrapper.text()).not.toContain("Accuracy");
+  });
+
+  it("shows only classification metrics for classification tasks", () => {
+    const wrapper = mount(MLResults, {
+      props: {
+        loading: false,
+        error: "",
+        result: {
+          task_type: "classification",
+          model_type: "logistic_l2",
+          target: "label",
+          features: ["x"],
+          classes: ["0", "1"],
+          split: { sizes: { train: 8, test: 2 } },
+          metrics: {
+            train: { accuracy: 1, precision: 1, recall: 1, f1: 1, roc_auc: 1 },
+            test: { accuracy: 0.8, precision: 0.8, recall: 0.8, f1: 0.8, roc_auc: 0.9 },
+          },
+        },
+      },
+    });
+    expect(wrapper.text()).toContain("Accuracy");
+    expect(wrapper.text()).toContain("ROC-AUC");
+    expect(wrapper.text()).not.toContain("RMSE");
+  });
+
+  it("explains missing multiclass ROC-AUC", () => {
+    const wrapper = mount(MLResults, {
+      props: {
+        loading: false,
+        error: "",
+        result: {
+          task_type: "classification",
+          model_type: "random_forest_classifier",
+          target: "label",
+          features: ["x"],
+          classes: ["a", "b", "c"],
+          split: { sizes: { train: 8, test: 2 } },
+          metrics: {
+            train: { accuracy: 1, precision: 1, recall: 1, f1: 1 },
+            test: { accuracy: 0.8, precision: 0.8, recall: 0.8, f1: 0.8 },
+          },
+        },
+      },
+    });
+    expect(wrapper.text()).toContain("多分类未计算");
+    expect(wrapper.text()).toContain("OvR");
   });
 });
 
